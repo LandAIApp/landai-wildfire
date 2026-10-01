@@ -1,0 +1,12 @@
+# Target runtime: Python 3.11
+# Direct dependencies only; versions will be locked during implementation.
+fastapi
+uvicorn
+earthengine-api
+pydantic
+python-dotenv
+pytest
+pandas
+numpy
+geopandas
+shapely
