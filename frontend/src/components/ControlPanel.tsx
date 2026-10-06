@@ -46,6 +46,9 @@ export default function ControlPanel(p: Props) {
           {t('controls.example')}
         </button>
       </div>
+      <div className="demo-note">
+        {t('controls.exampleNote')}
+      </div>
 
       <label htmlFor="department">{t('controls.department')}</label>
       <select id="department" value={p.department} disabled={disabled || p.departments.length === 0}

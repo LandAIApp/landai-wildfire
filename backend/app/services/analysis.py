@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from backend.tests.conftest import req
 import ee
+import logging
+import time
+logger = logging.getLogger('landai.analysis')
 
 from ..core.earth_engine import evaluate
 from ..core.errors import (
@@ -27,6 +31,14 @@ THRESHOLD_LABELS = {
 
 
 def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
+    started_at = time.perf_counter()
+    logger.info(
+        'wildfire_analysis_started department=%s municipality=%s fire_date=%s analysis_end=%s',
+        req.department,
+        req.municipality,
+        req.fire_date,
+        req.analysis_end,
+    )
     pre = run_preflight(req)
     if not pre.valid:
         if any(i.code == 'municipality_not_found' for i in pre.blocking_errors):
@@ -69,6 +81,24 @@ def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
     layers, layer_warnings = build_layers(result)
     warnings.extend(layer_warnings)
     boundary = administrative.boundary_geojson(collection)
+
+    elapsed = time.perf_counter() - started_at
+    logger.info(
+        'wildfire_analysis_completed department=%s municipality=%s '
+        'positive_samples=%s negative_samples=%s '
+        'wf035=%.2f wf050=%.2f wf060=%.2f wf072=%.2f wf085=%.2f '
+        'duration_seconds=%.2f',
+        req.department,
+        req.municipality,
+        n_pos,
+        n_neg,
+        stats['wf035'],
+        stats['wf050'],
+        stats['wf060'],
+        stats['wf072'],
+        stats['wf085'],
+        elapsed,
+    )
 
     return AnalyzeResponse(
         status='ok',

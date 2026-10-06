@@ -32,6 +32,7 @@ export const es = {
   'windows.pre': 'PRE',
   'windows.post': 'POST',
   'windows.history': 'Histórico',
+  'controls.exampleNote': 'Caso demostrativo: San Luis, Tolima · Agosto 2026',
 
   // Status messages
   'status.idle': 'Selecciona un área y las fechas.',
@@ -61,7 +62,12 @@ export const es = {
   'results.cta.link': 'Habla con Land AI →',
   'disclaimer.text':
     'Estimación preliminar automatizada de Observación de la Tierra. Este resultado no es un perímetro oficial de incendio validado.',
-
+  'results.about.model': 'Modelo',
+  'results.about.data': 'Datos',
+  'results.about.images': 'Imágenes utilizadas',
+  'results.about.resolution': 'Resolución de cálculo',
+  'results.probable': 'Área probable afectada',
+  'results.highConfidence': 'Alta confianza',
   // Layers
   'layers.title': 'Capas',
   'layers.empty': 'Las capas aparecen después del análisis.',
@@ -188,6 +194,7 @@ export const en: Record<MessageKey, string> = {
   'windows.pre': 'PRE',
   'windows.post': 'POST',
   'windows.history': 'History',
+  'controls.exampleNote': 'Demo case: San Luis, Tolima · August 2026',
 
   // Status messages
   'status.idle': 'Select an area and dates.',
@@ -217,7 +224,12 @@ export const en: Record<MessageKey, string> = {
   'results.cta.link': 'Talk to Land AI →',
   'disclaimer.text':
     'Automated preliminary Earth Observation estimate. This result is not an officially validated wildfire perimeter.',
-
+  'results.about.model': 'Model',
+  'results.about.data': 'Data',
+  'results.about.images': 'Images used',
+  'results.about.resolution': 'Calculation resolution',
+  'results.probable': 'Probable affected area',
+  'results.highConfidence': 'High confidence',
   // Layers
   'layers.title': 'Layers',
   'layers.empty': 'Layers appear after the analysis.',

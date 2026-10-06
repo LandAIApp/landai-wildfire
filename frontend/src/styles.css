@@ -209,3 +209,64 @@ table.results tr.highlight td:last-child { border-radius: 0 10px 10px 0; }
   .lang-switch button { padding: 4px 10px; }
   .button-row { flex-direction: column; }
 }
+
+.result-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.result-summary div {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.result-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+  margin-bottom: 3px;
+}
+
+.result-summary strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.demo-note {
+  margin: 4px 0 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.headline-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.headline-results div {
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: rgba(34, 216, 180, 0.06);
+  padding: 12px;
+}
+
+.headline-results span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.headline-results strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 20px;
+}
