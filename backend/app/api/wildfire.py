@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from ..core.rate_limit import limiter
 
 from ..schemas.wildfire import AnalyzeResponse, PreflightResponse, WildfireRequest
 from ..services.analysis import run_analysis
@@ -13,5 +14,7 @@ def preflight(request: WildfireRequest) -> PreflightResponse:
 
 
 @router.post('/analyze', response_model=AnalyzeResponse)
-def analyze(request: WildfireRequest) -> AnalyzeResponse:
-    return run_analysis(request)
+@limiter.limit("5/hour")
+@limiter.limit("20/day")
+def analyze(request: Request, payload: WildfireRequest) -> AnalyzeResponse:
+    return run_analysis(payload)

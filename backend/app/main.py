@@ -10,17 +10,30 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from .api import administrative, health, wildfire
 from .core.config import get_settings
 from .core.errors import WildfireError
+from .core.rate_limit import limiter
 
 logger = logging.getLogger('landai')
-
 
 def create_app() -> FastAPI:
     app = FastAPI(title='Land AI Wildfire Intelligence', version='0.1.0',
                   description='Automated preliminary wildfire estimate (V7.6 port).')
+    app.state.limiter = limiter
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(_: Request, exc: RateLimitExceeded) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content={
+                'status': 'error',
+                'code': 'rate_limit_exceeded',
+                'message': 'Too many wildfire analyses. Please wait before trying again.',
+                'details': str(exc.detail),
+            },
+        )
     app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origin_list,
                        allow_methods=['GET', 'POST', 'OPTIONS'], allow_headers=['*'])
 
