@@ -10,11 +10,16 @@ build/
 dist/
 *.egg-info/
 .ipynb_checkpoints/
+# Node
+node_modules/
+frontend/dist/
 # Local environment and credentials
 .env
 .env.*
 !.env.example
-credentials/
+credentials/*
+!credentials/.gitkeep
+*.json.key
 *.log
 # OS files
 .DS_Store

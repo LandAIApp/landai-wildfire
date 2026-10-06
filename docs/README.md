@@ -12,7 +12,7 @@ This scaffold reserves the following responsibilities for later implementation:
 | `backend/tests/` | Future tests |
 | `notebooks/` | Future exploratory notebooks |
 
-Empty `.gitkeep` files retain reserved directories. The [spectral module](spectral-indices.md) and the [historical module](historical-variability.md), with their offline tests, are now implemented. No classification,
+Empty `.gitkeep` files retain reserved directories. The [spectral module](spectral-indices.md), the [historical module](historical-variability.md), the [agricultural context module](agricultural-context.md), and the [VIIRS module](viirs.md), with their offline tests, are now implemented. No classification,
 algorithm changes, database, authentication, or frontend are introduced.
 
 ## Reference provenance
@@ -40,3 +40,4 @@ polygon asset, despite broader descriptions in the original reference notes.
 Future equivalence specifications, API contracts, and validation plans remain to
 be written. No scientific execution or Earth Engine validation was performed in
 this scaffolding step.
+- [equivalence.md](equivalence.md): V7.6 JS-vs-Python equivalence plan and status.

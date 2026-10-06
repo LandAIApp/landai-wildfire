@@ -1,0 +1,25 @@
+# Local development stack.  Usage:  cp .env.example .env  (fill EE_*)  &&  docker compose up --build
+# Frontend: http://localhost:5173   Backend: http://localhost:8000/docs
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Service-account key lives in ./credentials and is mounted read-only.
+      # Set EE_PRIVATE_KEY_PATH=credentials/<your-key>.json in .env
+      - ./credentials:/app/credentials:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_LANDAI_CONTACT_URL: ${VITE_LANDAI_CONTACT_URL:-}
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

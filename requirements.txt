@@ -1,12 +1,3 @@
-# Target runtime: Python 3.11
-# Direct dependencies only; versions will be locked during implementation.
-fastapi
-uvicorn
-earthengine-api
-pydantic
-python-dotenv
-pytest
-pandas
-numpy
-geopandas
-shapely
+# Convenience entry point: installs backend runtime + test dependencies.
+# (The previous geopandas/pandas/numpy/shapely entries were not used by any module.)
+-r backend/requirements-dev.txt
