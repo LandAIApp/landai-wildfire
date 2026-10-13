@@ -101,6 +101,29 @@ def read_download(content: bytes, band_names: list[str]) -> tuple[dict[str, np.n
         return ({name: data[i] for i, name in enumerate(band_names)}, src.transform, str(src.crs))
 
 
+def _download_error_details(response: httpx.Response) -> dict:
+    """HTTP status plus Earth Engine's own explanation (the download endpoint answers 4xx with a JSON/text
+    body such as 'Computation timed out.' or 'Total request size ... must be less than ...')."""
+    details: dict = {'http_status': response.status_code}
+    try:
+        body = response.read()[:2000].decode('utf-8', errors='replace')
+    except httpx.HTTPError:
+        body = ''
+    message = body.strip()
+    try:
+        import json
+        payload = json.loads(body)
+        if isinstance(payload, dict):
+            err = payload.get('error')
+            message = (err.get('message') if isinstance(err, dict) else err) or message
+    except ValueError:
+        pass
+    if message:
+        details['earth_engine_message'] = str(message)[:500]
+    logger.warning('footprint_download_rejected status=%s message=%s', response.status_code, message[:500])
+    return details
+
+
 def _download(url: str, settings: Settings) -> bytes:
     limit = 60_000_000
     chunks, size = [], 0
@@ -109,7 +132,7 @@ def _download(url: str, settings: Settings) -> bytes:
                           follow_redirects=True) as response:
             if response.status_code != 200:
                 raise FootprintError('Earth Engine could not deliver the footprint raster.',
-                                     details={'http_status': response.status_code})
+                                     details=_download_error_details(response))
             for chunk in response.iter_bytes():
                 size += len(chunk)
                 if size > limit:
