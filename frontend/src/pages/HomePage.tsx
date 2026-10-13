@@ -17,6 +17,7 @@ import { DEFAULT_EXPOSURE_VISIBLE, EXPOSURE_LAYERS } from '../services/exposure'
 import { formatNumber } from '../services/format';
 import { areaLevel, closeRing, hasSelfIntersection, rectangleRing, ringAreaHectares } from '../services/geometry';
 import { describeError } from '../services/issues';
+import { newProgressId, useProgress } from '../services/progress';
 import type {
   AnalyzeResponse, ExposureLayerName, ExposureResponse, LngLat, PreflightResponse, PublicConfig,
   RecordedDemo, Ring, WildfireRequest,
@@ -48,6 +49,12 @@ export default function HomePage() {
   const [exposureLoading, setExposureLoading] = useState(false);
   const [exposureError, setExposureError] = useState<unknown>(null);
   const [exposureVisible, setExposureVisible] = useState<Record<ExposureLayerName, boolean>>(DEFAULT_EXPOSURE_VISIBLE);
+  // Real backend stages (polled while a heavy request runs) and guards against double clicks.
+  const [analysisPid, setAnalysisPid] = useState<string | null>(null);
+  const [exposurePid, setExposurePid] = useState<string | null>(null);
+  const analysisInFlight = useRef(false);
+  const exposureInFlight = useRef(false);
+  const exposureProgress = useProgress(exposurePid, exposureLoading);
   const [focus, setFocus] = useState<ExposureFocus | null>(null);
   const onFocus = (target: { osm?: string; layer?: ExposureLayerName }) => {
     setFocus((f) => ({ ...target, seq: (f?.seq ?? 0) + 1 }));
@@ -63,6 +70,7 @@ export default function HomePage() {
   const [endDate, setEndDate] = useState<string>(EXAMPLE.endDate);
 
   const [busy, setBusy] = useState<Busy>(null);
+  const analysisProgress = useProgress(analysisPid, busy === 'analysis');
   const [elapsed, setElapsed] = useState(0);
   const [statusState, setStatusState] = useState<StatusState>({ kind: 'idle', key: 'status.idle' });
   const [preflight, setPreflight] = useState<PreflightResponse | null>(null);
@@ -221,11 +229,15 @@ export default function HomePage() {
   };
 
   const onAnalyze = async () => {
+    if (analysisInFlight.current) return;          // a second click while one request is running is ignored
+    analysisInFlight.current = true;
+    const pid = newProgressId();
+    setAnalysisPid(pid);
     setBusy('analysis');
     setResult(null);
     setStatusState({ kind: 'info', key: 'status.analyzing' });
     try {
-      const res = await api.analyze(body);
+      const res = await api.analyze({ ...body, progress_id: pid });
       setResult(res);
       setPreflight(null);
       const v: Record<string, boolean> = {};
@@ -243,23 +255,28 @@ export default function HomePage() {
     } catch (e) {
       fail(e);
     } finally {
+      analysisInFlight.current = false;
       setBusy(null);
     }
   };
 
   const onExposure = async () => {
-    if (!result?.analysis_ref) return;
+    if (!result?.analysis_ref || exposureInFlight.current) return;   // ignore repeated clicks
+    exposureInFlight.current = true;
+    const pid = newProgressId();
+    setExposurePid(pid);
     setExposureLoading(true);
     setExposureError(null);
     setExposure(null);
     setTab('exposure');
     try {
-      const res = await api.exposure({ analysis_ref: result.analysis_ref, threshold, buffer_m: bufferM });
+      const res = await api.exposure({ analysis_ref: result.analysis_ref, threshold, buffer_m: bufferM, progress_id: pid });
       setExposure(res);
       setExposureVisible(DEFAULT_EXPOSURE_VISIBLE);
     } catch (e) {
       setExposureError(e);
     } finally {
+      exposureInFlight.current = false;
       setExposureLoading(false);
     }
   };
@@ -309,6 +326,7 @@ export default function HomePage() {
             department={department} municipality={municipality}
             fireDate={fireDate} endDate={endDate} minDate={config.aoi.min_fire_date} maxDate={todayIso()}
             busy={busy} elapsed={elapsed} status={status} preflight={preflight} counts={counts}
+            progress={analysisProgress} paused={config.service?.analysis_enabled === false}
             onDepartment={(v) => { setDepartment(v); invalidate(); }}
             onMunicipality={(v) => { setMunicipality(v); invalidate(); }}
             onFireDate={(v) => { setFireDate(v); invalidate(); }}
@@ -332,6 +350,7 @@ export default function HomePage() {
                 <ExposureAction
                   result={result} config={config} threshold={threshold} bufferM={bufferM}
                   running={exposureLoading} disabled={busy !== null}
+                  paused={config.service?.exposure_enabled === false}
                   onThreshold={setThreshold} onBuffer={setBufferM} onRun={onExposure}
                 />
               )}
@@ -340,7 +359,7 @@ export default function HomePage() {
           )}
           {tab === 'exposure' && (
             <ExposurePanel
-              exposure={exposure} loading={exposureLoading} error={exposureError} apiBase={API_BASE}
+              exposure={exposure} loading={exposureLoading} error={exposureError} apiBase={API_BASE} progress={exposureProgress}
               demoRecordedAt={demoActive && demo ? demo.recorded_at : null}
               canLoadDemo={!!demo} onLoadDemo={onLoadDemo} onFocus={onFocus}
             />

@@ -19,6 +19,8 @@ export const DEFAULT_CONFIG: PublicConfig = {
   },
   rate_limits: { analyze: [{ count: 5, per: 'HOUR' }], exposure: [{ count: 10, per: 'HOUR' }], enabled: true },
   sources: {},
+  service: { analysis_enabled: true, exposure_enabled: true, max_concurrent_exposure: 1,
+             max_concurrent_analysis: 2, max_exposure_seconds: 1000, cache_ttl_seconds: 1800 },
 };
 
 /** Merge a (possibly partial / older) backend answer over the defaults. */
@@ -31,5 +33,6 @@ export function mergeConfig(remote: Partial<PublicConfig> | null | undefined): P
       municipality: { ...DEFAULT_CONFIG.aoi.municipality, ...remote.aoi.municipality } },
     exposure: { ...DEFAULT_CONFIG.exposure, ...(remote.exposure ?? {}) },
     rate_limits: { ...DEFAULT_CONFIG.rate_limits, ...(remote.rate_limits ?? {}) },
+    service: { ...DEFAULT_CONFIG.service!, ...(remote.service ?? {}) },
   };
 }

@@ -1,6 +1,6 @@
 import type {
   AnalyzeResponse, ApiErrorBody, ExposureRequest, ExposureResponse, PreflightResponse, PublicConfig,
-  RecordedDemo, WildfireRequest,
+  ProgressSnapshot, RecordedDemo, WildfireRequest,
 } from '../types/api';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000';
@@ -55,6 +55,9 @@ export const api = {
   /** Exposure & Impact (explicit user action). Re-runs the validated graph server-side: allow minutes. */
   exposure: (body: ExposureRequest) =>
     request<ExposureResponse>('/api/v1/exposure/analyze', json(body), 20 * 60_000),
+  /** Real processing stages of a running request (404 = this server instance knows nothing about it). */
+  progress: (id: string) =>
+    request<ProgressSnapshot>(`/api/v1/progress/${encodeURIComponent(id)}`, undefined, 10_000),
   /** Optional recorded demo shipped with the static site (absent unless recorded). */
   recordedDemo: async (): Promise<RecordedDemo | null> => {
     const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';

@@ -12,6 +12,8 @@ export interface WildfireRequest {
   geometry?: PolygonGeometry;
   fire_date: string;
   analysis_end: string;
+  /** Random id so the UI can poll the real processing stages. */
+  progress_id?: string;
 }
 
 export interface PreflightResponse {
@@ -96,7 +98,21 @@ export interface PublicConfig {
   };
   rate_limits: { analyze: { count: number; per: string }[]; exposure: { count: number; per: string }[]; enabled: boolean };
   sources: Record<string, string>;
+  service?: ServiceInfo;
 }
+
+export interface ServiceInfo {
+  analysis_enabled: boolean; exposure_enabled: boolean;
+  max_concurrent_exposure: number; max_concurrent_analysis: number;
+  max_exposure_seconds: number; cache_ttl_seconds: number;
+}
+
+export type StageState = 'pending' | 'running' | 'done' | 'cached' | 'skipped' | 'failed';
+export interface ProgressStage {
+  key: string; state: StageState; seconds: number | null;
+  detail: { cells_done?: number; cells_total?: number; error?: string };
+}
+export interface ProgressSnapshot { status: 'ok'; elapsed_s: number; finished: boolean; stages: ProgressStage[] }
 
 // ---------------- Exposure & Impact ----------------
 export interface ExposureRequest {
@@ -105,6 +121,7 @@ export interface ExposureRequest {
   buffer_m?: number;
   include_population?: boolean;
   include_sensitivity?: boolean;
+  progress_id?: string;
 }
 
 export type MetricCoverage = 'mapped' | 'no_osm_data' | 'unavailable';
@@ -183,6 +200,8 @@ export interface ExposureResponse {
     date_windows: DateWindows | null; model_version: string | null;
     buffer_m: number; generated_at: string;
     custom_aoi_note: string | null;
+    /** Server-side processing info: stage timings and whether the answer came from the in-memory cache. */
+    processing?: { timings_s?: Record<string, number | boolean>; served_from_cache?: boolean };
   };
   metrics: ExposureMetrics;
   details: ExposureDetails;

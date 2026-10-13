@@ -27,6 +27,8 @@ class WildfireRequest(BaseModel):
     geometry: PolygonGeometry | None = None
     fire_date: date
     analysis_end: date
+    # Random id chosen by the client so it can poll GET /api/v1/progress/{id} while the analysis runs.
+    progress_id: str | None = Field(None, pattern=r'^[A-Za-z0-9_-]{16,64}$')
 
     @model_validator(mode='after')
     def _check_order(self) -> 'WildfireRequest':

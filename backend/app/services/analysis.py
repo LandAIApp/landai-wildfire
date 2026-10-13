@@ -8,11 +8,15 @@ import time
 
 import ee
 
+from ..core import progress as progress_mod
 from ..core.config import get_settings
 from ..core.earth_engine import evaluate
 from ..core.errors import (
-    MunicipalityNotFoundError, NoTrainingSamplesError, PreflightFailedError,
+    MunicipalityNotFoundError, NoTrainingSamplesError, PreflightFailedError, ServicePausedError,
 )
+from ..core.gate import slot
+from ..core.memo import Memo, fingerprint
+from ..core.progress import NullProgress, Progress
 from ..schemas.wildfire import (
     AnalyzeResponse, AreaEntry, Issue, TrainingInfo, WildfireRequest,
 )
@@ -33,7 +37,40 @@ THRESHOLD_LABELS = {
 }
 
 
+ANALYSIS_STAGES = ['preflight', 'model', 'training', 'area', 'layers']
+# Identical analyses that arrive together are computed once (single-flight). The result is NOT cached afterwards:
+# it carries Earth Engine map-tile links that expire.
+_flights = Memo(max_items=1)
+
+
+def reset_flights() -> None:
+    _flights.clear()
+
+
 def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
+    """Guarded entry point: kill switch, bounded concurrency, duplicate-request sharing and live stages."""
+    settings = get_settings()
+    if not settings.analysis_enabled:
+        raise ServicePausedError('The wildfire analysis is temporarily paused by the operator.')
+    progress = progress_mod.begin(req.progress_id, ANALYSIS_STAGES)
+    key = fingerprint('analysis', req.model_dump(mode='json', exclude={'progress_id'}))
+
+    def compute() -> AnalyzeResponse:
+        with slot('analysis', settings.analysis_max_concurrent,
+                  busy_message='The server is running other analyses. Please retry in a minute.'):
+            return _run_analysis(req, progress)
+
+    try:
+        result, how = _flights.get_or_compute(key, compute, ttl=0)
+        if how != 'computed':
+            logger.info('wildfire_analysis_shared with an identical request already running')
+        return result
+    finally:
+        progress.close()
+
+
+def _run_analysis(req: WildfireRequest, progress: Progress | None = None) -> AnalyzeResponse:
+    progress = progress or NullProgress()
     started_at = time.perf_counter()
     logger.info(
         'wildfire_analysis_started department=%s municipality=%s fire_date=%s analysis_end=%s',
@@ -42,7 +79,9 @@ def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
         req.fire_date,
         req.analysis_end,
     )
+    progress.start('preflight')
     pre = run_preflight(req)
+    progress.finish('preflight')
     if not pre.valid:
         if any(i.code == 'municipality_not_found' for i in pre.blocking_errors):
             raise MunicipalityNotFoundError(pre.blocking_errors[0].message)
@@ -60,12 +99,16 @@ def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
     else:
         collection = administrative.select_municipality(req.department, req.municipality)
         aoi = collection.geometry()
+    progress.start('model')
     result = run_burn_model(aoi, ee.Date(req.fire_date.isoformat()),
                             ee.Date(req.analysis_end.isoformat()))
+    progress.finish('model')
 
     warnings: list[Issue] = list(pre.warnings)
 
+    progress.start('training')
     counts = evaluate(result['trainingCounts'], 'sampling training pixels')
+    progress.finish('training')
     n_pos, n_neg = int(counts.get('positive', 0)), int(counts.get('negative', 0))
     if n_pos == 0:
         raise NoTrainingSamplesError(
@@ -81,7 +124,9 @@ def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
                               message=f'Only {n_pos} positive training samples were found; '
                                       'the estimate may be unstable.'))
 
+    progress.start('area')
     raw = evaluate(result['areaStatistics'], 'calculating affected area') or {}
+    progress.finish('area')
     stats = {key: float(raw.get(key) or 0.0) for _t, _k, key, _b in THRESHOLD_SPECS}
     if not any(stats.values()):
         warnings.append(Issue(code='no_area_detected',
@@ -89,7 +134,9 @@ def run_analysis(req: WildfireRequest) -> AnalyzeResponse:
     area_hectares = [AreaEntry(threshold=t, key=key, label=THRESHOLD_LABELS[key], hectares=stats[key])
                      for t, _k, key, _b in THRESHOLD_SPECS]
 
+    progress.start('layers')
     layers, layer_warnings = build_layers(result)
+    progress.finish('layers')
     warnings.extend(layer_warnings)
     boundary = drawn.boundary if drawn is not None else administrative.boundary_geojson(collection)
     bounds = drawn.bounds if drawn is not None else administrative.geometry_bounds(boundary['geometry'])

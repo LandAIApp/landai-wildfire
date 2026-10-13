@@ -35,6 +35,10 @@ def exposure_limit() -> str:
     return get_settings().rate_limit_exposure
 
 
+def progress_limit() -> str:
+    return get_settings().rate_limit_progress
+
+
 def describe_limits(spec: str) -> list[dict]:
     return [{'count': i.amount, 'per': i.GRANULARITY.name} for i in parse_many(spec)]
 

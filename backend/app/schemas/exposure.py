@@ -26,6 +26,8 @@ class ExposureRequest(BaseModel):
     buffer_m: float | None = Field(None, ge=0)
     include_population: bool = True
     include_sensitivity: bool = True
+    # Random id chosen by the client so it can poll GET /api/v1/progress/{id} while this request runs.
+    progress_id: str | None = Field(None, pattern=r'^[A-Za-z0-9_-]{16,64}$')
 
     @model_validator(mode='after')
     def _one_mode(self) -> 'ExposureRequest':

@@ -12,6 +12,8 @@ interface Props {
   onThreshold: (v: number) => void;
   onBuffer: (v: number) => void;
   onRun: () => void;
+  /** The operator paused the module (kill switch). */
+  paused?: boolean;
 }
 
 const THRESHOLD_KEYS: Record<string, string> = { '0.35': 'wf035', '0.5': 'wf050', '0.6': 'wf060', '0.72': 'wf072', '0.85': 'wf085' };
@@ -22,7 +24,13 @@ export default function ExposureAction(p: Props) {
   const hectares = p.result.aoi?.hectares ?? p.result.metadata.aoi_hectares ?? 0;
   const tooLarge = hectares > p.config.exposure.max_aoi_hectares;
   const noRef = !p.result.analysis_ref;
-  const blocked = tooLarge || noRef;
+  const blocked = tooLarge || noRef || !!p.paused;
+  const perUnit: Record<string, [string, string]> = {
+    SECOND: ['s', 's'], MINUTE: ['min', 'min'], HOUR: ['h', 'h'], DAY: ['día', 'day'], MONTH: ['mes', 'month'],
+  };
+  const rate = p.config.rate_limits.exposure
+    .map((r) => `${r.count}/${(perUnit[r.per.toUpperCase()] ?? [r.per, r.per])[lang === 'es' ? 0 : 1]}`).join(' · ');
+  const minutes = Math.max(1, Math.round((p.config.service?.cache_ttl_seconds ?? 1800) / 60));
 
   return (
     <section className="card exposure-action" data-testid="exposure-action">
@@ -56,7 +64,9 @@ export default function ExposureAction(p: Props) {
         </div>
       )}
       {!tooLarge && noRef && <div className="alert warning">{t('exposure.cta.noAnalysis')}</div>}
+      {p.paused && <div className="alert warning" role="alert">{t('service.exposurePaused')}</div>}
       <p className="muted small">{t('exposure.cta.limit', { max: formatNumber(p.config.exposure.max_aoi_hectares, lang) })}</p>
+      <p className="muted small" data-testid="exposure-limitations">{t('exposure.cta.limitations', { rate, minutes })}</p>
     </section>
   );
 }

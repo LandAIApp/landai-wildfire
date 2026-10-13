@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from .api import administrative, config as config_api, exposure, health, wildfire
+from .api import administrative, config as config_api, exposure, health, progress, wildfire
 from .core.config import get_settings
 from .core.errors import WildfireError
 from .core.rate_limit import limiter, retry_after_seconds
@@ -20,6 +20,9 @@ from .core.rate_limit import limiter, retry_after_seconds
 logging.basicConfig(level=get_settings().log_level.upper(),
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('landai')
+# httpx logs every request URL at INFO (Earth Engine / WorldPop task links): keep them out of the logs.
+for _noisy in ('httpx', 'httpcore'):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 def create_app() -> FastAPI:
     app = FastAPI(title='Land AI Wildfire Intelligence', version='2.0.0',
@@ -66,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(administrative.router)
     app.include_router(wildfire.router)
     app.include_router(exposure.router)
+    app.include_router(progress.router)
     app.include_router(config_api.router)
     return app
 

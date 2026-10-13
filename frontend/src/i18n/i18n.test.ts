@@ -64,7 +64,8 @@ describe('dictionary integrity', () => {
       ...['invalid_request', 'department_not_found', 'municipality_not_found', 'preflight_failed',
         'no_training_samples', 'earth_engine_not_available', 'earth_engine_error',
         'earth_engine_timeout', 'earth_engine_computation_limit', 'earth_engine_quota',
-        'tile_generation_failed', 'internal_error', 'network_error', 'client_timeout']
+        'tile_generation_failed', 'internal_error', 'network_error', 'client_timeout', 'service_paused',
+        'server_busy', 'rate_limit_exceeded', 'exposure_aoi_too_large', 'osm_timeout', 'worldpop_timeout']
         .map((c) => `errors.${c}`),
     ];
     for (const k of keys) {

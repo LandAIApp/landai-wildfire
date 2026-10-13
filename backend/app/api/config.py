@@ -28,6 +28,12 @@ def public_config() -> PublicConfig:
         },
         rate_limits={'analyze': describe_limits(s.rate_limit_analyze),
                      'exposure': describe_limits(s.rate_limit_exposure), 'enabled': s.rate_limit_enabled},
+        service={
+            'analysis_enabled': s.analysis_enabled, 'exposure_enabled': s.exposure_enabled,
+            'max_concurrent_exposure': s.exposure_max_concurrent, 'max_concurrent_analysis': s.analysis_max_concurrent,
+            'max_exposure_seconds': s.exposure_max_seconds,
+            'cache_ttl_seconds': s.exposure_cache_ttl_seconds,
+        },
         sources={'openstreetmap': 'Overpass API (ODbL)', 'worldpop': f'WorldPop {s.worldpop_api_version}',
                  'earth_observation': 'Sentinel-2 / VIIRS via Google Earth Engine'},
     )

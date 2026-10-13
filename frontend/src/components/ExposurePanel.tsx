@@ -1,4 +1,5 @@
 import BarChart from './BarChart';
+import ProgressList from './ProgressList';
 import { useI18n } from '../i18n/LanguageContext';
 import {
   buildGeoJson, buildReport, displayMetric, displayPopulation, download, exportFileName, sourceState,
@@ -6,7 +7,7 @@ import {
 } from '../services/exposure';
 import { formatArea, formatDateTime, formatDecimal, formatKm2, formatNumber } from '../services/format';
 import { describeError } from '../services/issues';
-import type { ExposureLayerName, ExposureMetric, ExposureResponse, SourceKey } from '../types/api';
+import type { ExposureLayerName, ExposureMetric, ExposureResponse, ProgressSnapshot, SourceKey } from '../types/api';
 
 interface Props {
   exposure: ExposureResponse | null;
@@ -17,6 +18,8 @@ interface Props {
   demoRecordedAt: string | null;
   canLoadDemo: boolean;
   onLoadDemo: () => void;
+  /** Real backend stages while the analysis runs. */
+  progress?: ProgressSnapshot | null;
   /** Zoom the map to a feature (OSM id) or to a whole exposure layer. */
   onFocus?: (target: { osm?: string; layer?: ExposureLayerName }) => void;
 }
@@ -50,6 +53,7 @@ export default function ExposurePanel(p: Props) {
       <section className="card exposure-panel" data-testid="exposure-panel">
         {header}
         <div className="status info"><span className="spinner" aria-hidden /><span>{t('exposure.running')}</span></div>
+        <ProgressList snapshot={p.progress ?? null} kind="exposure" />
         <SourceStrip res={null} loading />
       </section>
     );
@@ -97,6 +101,11 @@ export default function ExposurePanel(p: Props) {
       {p.demoRecordedAt && (
         <div className="alert info" data-testid="demo-badge">
           {t('exposure.demoBadge', { date: dateLabel })}. {t('exposure.demoNote', { date: dateLabel })}
+        </div>
+      )}
+      {a.processing?.served_from_cache && (
+        <div className="alert info" data-testid="cached-note">
+          {t('exposure.cachedNote', { time: formatDateTime(a.generated_at, lang) })}
         </div>
       )}
       <SourceStrip res={res} loading={false} />

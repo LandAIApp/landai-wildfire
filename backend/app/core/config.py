@@ -61,6 +61,21 @@ class Settings(BaseSettings):
     exposure_max_layer_features: int = Field(5000, validation_alias='EXPOSURE_MAX_LAYER_FEATURES')
     exposure_max_display_vertices: int = Field(60_000, validation_alias='EXPOSURE_MAX_DISPLAY_VERTICES')
     exposure_max_hazard_vertices: int = Field(200_000, validation_alias='EXPOSURE_MAX_HAZARD_VERTICES')
+    # --- Cost / resource protection (all in-process: nothing is persisted, everything is lost on a restart) ----------
+    # Manual kill switches: set to false and redeploy to stop expensive work without touching the code.
+    analysis_enabled: bool = Field(True, validation_alias='ANALYSIS_ENABLED')
+    exposure_enabled: bool = Field(True, validation_alias='EXPOSURE_ENABLED')
+    # Wildfire analyses running at once on one instance (each holds a request thread while Earth Engine works).
+    analysis_max_concurrent: int = Field(2, validation_alias='ANALYSIS_MAX_CONCURRENT')
+    # Bounded, ephemeral caches. Memory ~= items x payload; payloads are bounded by the layer/vertex limits below.
+    footprint_cache_items: int = Field(3, validation_alias='FOOTPRINT_CACHE_ITEMS')
+    footprint_cache_ttl_seconds: int = Field(1800, validation_alias='FOOTPRINT_CACHE_TTL_SECONDS')
+    exposure_cache_items: int = Field(3, validation_alias='EXPOSURE_CACHE_ITEMS')
+    exposure_cache_ttl_seconds: int = Field(1800, validation_alias='EXPOSURE_CACHE_TTL_SECONDS')
+    cache_max_item_bytes: int = Field(25_000_000, validation_alias='CACHE_MAX_ITEM_BYTES')
+    # Live processing stages (in-memory, per instance).
+    progress_ttl_seconds: int = Field(3600, validation_alias='PROGRESS_TTL_SECONDS')
+    rate_limit_progress: str = Field('1200/hour', validation_alias='RATE_LIMIT_PROGRESS')
     analysis_ref_ttl_seconds: int = Field(6 * 3600, validation_alias='ANALYSIS_REF_TTL_SECONDS')
     # Secret that signs backend-issued analysis references. Empty = random per process
     # (references then stop validating after a restart / scale-to-zero).

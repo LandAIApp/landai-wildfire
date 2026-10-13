@@ -70,6 +70,10 @@ class ServerBusyError(WildfireError):
     status_code, code = 503, 'server_busy'
 
 
+class ServicePausedError(WildfireError):
+    status_code, code = 503, 'service_paused'
+
+
 class InvalidAnalysisRefError(WildfireError):
     status_code, code = 422, 'invalid_analysis_ref'
 

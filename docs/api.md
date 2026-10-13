@@ -44,3 +44,22 @@ Error codes: `invalid_analysis_ref` (422), `exposure_aoi_too_large` (422), `foot
 `osm_timeout|osm_unavailable|osm_rate_limited|osm_response_too_large|osm_incomplete|osm_too_many_elements`,
 `worldpop_timeout|worldpop_unreachable|worldpop_task_failed|worldpop_bad_response|worldpop_http_error|worldpop_rate_limited|worldpop_geometry_too_complex`.
 OSM or WorldPop failure yields `partial` with that source in `error` – never zero values.
+
+
+## GET /api/v1/progress/{progress_id}
+Real processing stages of a running (or just finished) heavy request. The client generates a random `progress_id`
+(`[A-Za-z0-9_-]{16,64}`), sends it in the body of `POST /wildfire/analyze` or `POST /exposure/analyze`, and polls this
+endpoint every few seconds. Response: `{status:'ok', elapsed_s, finished, stages:[{key, state, seconds, detail}]}` where
+`state` is `pending | running | done | cached | skipped | failed`. Wildfire stages: `preflight, model, training, area,
+layers`; exposure stages: `earth_observation, openstreetmap, population, spatial_analysis, response` (`detail` may carry
+`cells_done/cells_total` for OpenStreetMap). There is no percentage and no ETA. `404 progress_unknown` means this
+instance knows nothing about the id (another instance, expired, or invalid): clients must simply show no detail.
+
+## Additions in the performance release
+* `ExposureRequest.progress_id`, `WildfireRequest.progress_id` (optional).
+* `ExposureResponse.analysis.processing = {timings_s: {...}, served_from_cache: bool}`. `timings_s` has `footprint_s,
+  prepare_s, osm_s, population_s, sources_s, zone_s, metrics_s, sensitivity_s, layers_s, exports_s, total_s`.
+  `served_from_cache = true` means the result (computed earlier by this instance for the same analysis and parameters) was
+  reused; `analysis.generated_at` is then the original computation time.
+* `GET /config` adds `service = {analysis_enabled, exposure_enabled, max_concurrent_*, max_exposure_seconds, cache_ttl_seconds}`.
+* New error `service_paused` (503): the operator disabled the module (`ANALYSIS_ENABLED` / `EXPOSURE_ENABLED`).

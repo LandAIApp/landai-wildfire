@@ -1,7 +1,8 @@
 import { useI18n } from '../i18n/LanguageContext';
 import type { ReactNode } from 'react';
 import { describeIssue } from '../services/issues';
-import type { PreflightResponse } from '../types/api';
+import type { PreflightResponse, ProgressSnapshot } from '../types/api';
+import ProgressList from './ProgressList';
 
 export type Busy = 'catalog' | 'preflight' | 'analysis' | null;
 export type StatusKind = 'idle' | 'info' | 'success' | 'warning' | 'error';
@@ -36,6 +37,10 @@ interface Props {
   onExample: () => void;
   onCheck: () => void;
   onAnalyze: () => void;
+  /** Real backend stages while the analysis runs. */
+  progress?: ProgressSnapshot | null;
+  /** The operator paused the analysis (kill switch). */
+  paused?: boolean;
 }
 
 const fmt = (n: number | null) => (n === null ? '—' : String(n));
@@ -103,7 +108,7 @@ export default function ControlPanel(p: Props) {
         <button className="btn secondary" onClick={p.onCheck} disabled={disabled || !ready || !datesOk}>
           {p.busy === 'preflight' ? t('controls.checking') : t('controls.check')}
         </button>
-        <button className="btn primary" onClick={p.onAnalyze} disabled={disabled || !ready || !datesOk}>
+        <button className="btn primary" onClick={p.onAnalyze} disabled={disabled || !ready || !datesOk || p.paused}>
           {p.busy === 'analysis' ? t('controls.analyzing') : t('controls.analyze')}
         </button>
       </div>
@@ -113,6 +118,8 @@ export default function ControlPanel(p: Props) {
         <span>{p.status.text}</span>
         {p.busy === 'analysis' && <span className="elapsed"> ({p.elapsed}s)</span>}
       </div>
+      {p.paused && <div className="alert warning" role="alert">{t('service.analysisPaused')}</div>}
+      {p.busy === 'analysis' && <ProgressList snapshot={p.progress ?? null} kind="analysis" />}
 
       <div className="counts">
         <div><strong>{fmt(p.counts.pre)}</strong><span>{t('counts.pre')}</span></div>

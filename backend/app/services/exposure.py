@@ -25,10 +25,14 @@ from shapely.validation import explain_validity
 from ..core.config import Settings, get_settings
 from ..core.errors import (
     ExposureAreaTooLargeError, ExternalSourceError, InvalidRequestError, NoAffectedAreaError,
-    WildfireError,
+    ServicePausedError, WildfireError,
 )
+from ..core import progress as progress_mod
+from ..core.cache import TTLCache
 from ..core.gate import slot
 from ..core.geometry import validate_polygon
+from ..core.memo import Memo, fingerprint
+from ..core.progress import NullProgress, Progress
 from ..schemas.exposure import ExposureRequest, ExposureResponse
 from ..wildfire.config import THRESHOLD_SPECS
 from . import analysis_ref, exposure_export, exposure_metrics, footprint, osm, spatial, worldpop
@@ -53,6 +57,22 @@ WARNING_TEXT = {
     'hazard_clipped_to_aoi': 'The supplied hazard polygon extends outside the study area; {pct}% of it was ignored.',
     'source_failed': 'The {source} source failed: {message}',
 }
+EXPOSURE_STAGES = ['earth_observation', 'openstreetmap', 'population', 'spatial_analysis', 'response']
+CACHE_SCHEMA = 3          # bump when the shape/meaning of a cached value changes
+_caches: dict[str, Any] = {}              # created lazily from the settings; ephemeral (lost on restart)
+
+
+def _footprint_cache(settings: Settings) -> TTLCache:
+    return _caches.setdefault('footprints', TTLCache(max_items=max(1, settings.footprint_cache_items)))
+
+
+def _result_cache(settings: Settings) -> Memo:
+    return _caches.setdefault('results', Memo(max_items=settings.exposure_cache_items))
+
+
+def reset_caches() -> None:
+    """Tests / operations: drop every cached footprint and result."""
+    _caches.clear()
 TOKEN_FIELDS = ('kind', 'fire_date', 'analysis_end', 'aoi_hectares', 'model_version', 'area_ha')
 
 
@@ -100,6 +120,43 @@ def _resolve_earth_engine(ctx: dict, mask_keys: list[str], settings: Settings) -
     if ctx['kind'] == 'drawn':
         fp.aoi = spatial.to_metric(Polygon(ctx['ring']), fp.crs)    # exact drawn ring, same CRS as raster
         fp.aoi_from_raster = False
+    return fp
+
+
+def _identity(ctx: dict) -> dict:
+    """Everything that defines WHICH analysis this is (AOI, dates, algorithm version): used in every cache key."""
+    ident = {k: ctx.get(k) for k in ('kind', 'fire_date', 'analysis_end', 'model_version', 'aoi_hectares')}
+    if ctx['kind'] == 'drawn':
+        ident['ring'] = ctx.get('ring')
+    else:
+        ident['department'], ident['municipality'] = ctx.get('department'), ctx.get('municipality')
+    return ident
+
+
+def _footprint_for(ctx: dict, mask_keys: list[str], settings: Settings, progress: Progress,
+                   timings: dict) -> Footprint:
+    """Cleaned burn masks for these thresholds; reuses the ones already downloaded for the same analysis.
+
+    Earth Engine keeps no result between requests (and exporting one would need persistent storage), so what can be
+    reused safely is the footprint this process already rasterised and vectorised for the SAME analysis parameters.
+    """
+    cache = _footprint_cache(settings)
+    key = fingerprint('footprint', CACHE_SCHEMA, _identity(ctx), settings.exposure_tile_px)
+    cached: Footprint | None = cache.get(key)
+    need = set(mask_keys)
+    if cached is not None and need <= set(cached.footprints):
+        progress.finish('earth_observation', 'cached')
+        timings['footprint_s'] = 0.0
+        timings['footprint_from_cache'] = True
+        logger.info('footprint_cache hit keys=%s', sorted(need))
+        return cached
+    keys = sorted(need | set(cached.footprints)) if cached is not None else list(mask_keys)
+    started = time.perf_counter()
+    fp = _resolve_earth_engine(ctx, keys, settings)
+    timings['footprint_s'] = round(time.perf_counter() - started, 1)
+    timings['footprint_from_cache'] = False
+    progress.finish('earth_observation')
+    cache.set(key, fp, settings.footprint_cache_ttl_seconds)
     return fp
 
 
@@ -211,7 +268,10 @@ def _display_footprint(metric_geom: BaseGeometry, crs: str, pixel_m: float, sett
 def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Settings, *,
                    extra_warnings: list[dict] | None = None,
                    osm_fetch: Callable[..., osm.OsmData] | None = None,
-                   pop_estimate: Callable[..., worldpop.PopulationResult] | None = None) -> dict:
+                   pop_estimate: Callable[..., worldpop.PopulationResult] | None = None,
+                   progress: Progress | None = None, timings: dict | None = None) -> dict:
+    progress = progress or NullProgress()
+    timings = timings if timings is not None else {}
     default_osm = osm_fetch is None
     osm_fetch = osm_fetch or osm.fetch                 # resolved at call time (patchable in tests)
     pop_estimate = pop_estimate or worldpop.estimate
@@ -230,36 +290,58 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     # Footprint bbox (largest footprint kept for the sensitivity table) + buffer -> OSM query box.
     # The bbox of a buffered geometry is just its bbox grown by the distance: no (slow) buffer needed for that.
     prep_started = time.perf_counter()
-    largest = max(fp.footprints.values(), key=lambda g: g.area)
+    # OSM must cover every footprint the response uses: all thresholds with the sensitivity table, otherwise only
+    # the selected one (a cached footprint may hold more thresholds than this request needs).
+    used = [g for k, g in fp.footprints.items() if req.include_sensitivity or k == sel_key] or [hazard]
+    largest = max(used, key=lambda g: g.area)
     d = buffer_m + 50
     minx, miny, maxx, maxy = largest.bounds
     bounds = spatial.to_wgs84(box(minx - d, miny - d, maxx + d, maxy + d), fp.crs).bounds
     # cells that cannot touch the (buffered) footprint are not requested from Overpass; the outline is
     # simplified first (40 m << the 500 m margin) because buffering the raw raster outline takes a minute
     osm_region = spatial.to_wgs84(largest.simplify(40).buffer(d, quad_segs=1), fp.crs)
-    logger.info('exposure_prepared seconds=%.1f', time.perf_counter() - prep_started)
+    timings['prepare_s'] = round(time.perf_counter() - prep_started, 1)
+    logger.info('exposure_prepared seconds=%.1f', timings['prepare_s'])
 
     started = time.perf_counter()
     osm_result: dict[str, Any] = {}
     pop_result: dict[str, Any] = {}
 
     def run_osm():
+        began = time.perf_counter()
+        progress.start('openstreetmap')
         try:
-            osm_result['data'] = (osm_fetch(bounds, settings, region=osm_region) if default_osm
-                                  else osm_fetch(bounds, settings))
+            if default_osm:
+                osm_result['data'] = osm_fetch(
+                    bounds, settings, region=osm_region,
+                    on_progress=lambda done, total: progress.update('openstreetmap', cells_done=done, cells_total=total))
+            else:
+                osm_result['data'] = osm_fetch(bounds, settings)
+            progress.finish('openstreetmap', 'cached' if osm_result['data'].from_cache else 'done')
         except Exception as exc:  # noqa: BLE001
             osm_result['error'] = _source_error(exc, 'openstreetmap')
+            progress.finish('openstreetmap', 'failed', error=osm_result['error']['code'])
+        timings['osm_s'] = round(time.perf_counter() - began, 1)
 
     def run_pop():
+        began = time.perf_counter()
+        progress.start('population')
         try:
             pop_result['data'] = pop_estimate(hazard, fp.crs, settings)
+            progress.finish('population', 'cached' if getattr(pop_result['data'], 'from_cache', False) else 'done')
         except Exception as exc:  # noqa: BLE001
             pop_result['error'] = _source_error(exc, 'worldpop')
+            progress.finish('population', 'failed', error=pop_result['error']['code'])
+        timings['population_s'] = round(time.perf_counter() - began, 1)
 
+    if not req.include_population:
+        progress.finish('population', 'skipped')
     jobs = [run_osm] + ([run_pop] if req.include_population else [])
     with ThreadPoolExecutor(max_workers=2) as pool:
         for future in [pool.submit(job) for job in jobs]:
             future.result()
+    timings['sources_s'] = round(time.perf_counter() - started, 1)
+    progress.start('spatial_analysis')
     logger.info('exposure_sources_done seconds=%.1f osm=%s pop=%s', time.perf_counter() - started,
                 'ok' if 'data' in osm_result else 'error',
                 'skipped' if not req.include_population else ('ok' if 'data' in pop_result else 'error'))
@@ -295,11 +377,13 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
         data: osm.OsmData = osm_result['data']
         stage = time.perf_counter()
         zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard   # built once, reused below
-        logger.info('exposure_zone seconds=%.1f', time.perf_counter() - stage)
+        timings['zone_s'] = round(time.perf_counter() - stage, 1)
+        logger.info('exposure_zone seconds=%.1f', timings['zone_s'])
         stage = time.perf_counter()
         em = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=buffer_m, zone=zone,
                                       max_layer_features=settings.exposure_max_layer_features)
-        logger.info('exposure_metrics seconds=%.1f', time.perf_counter() - stage)
+        timings['metrics_s'] = round(time.perf_counter() - stage, 1)
+        logger.info('exposure_metrics seconds=%.1f', timings['metrics_s'])
         metrics.update(em.metrics)
         details.update(em.details)
         for w in em.warnings:
@@ -329,7 +413,8 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                     'health_intersecting': sm.metrics['health_intersecting']['value'],
                     'education_intersecting': sm.metrics['education_intersecting']['value'],
                     'selected': key == sel_key})
-        logger.info('exposure_sensitivity seconds=%.1f', time.perf_counter() - stage)
+        timings['sensitivity_s'] = round(time.perf_counter() - stage, 1)
+        logger.info('exposure_sensitivity seconds=%.1f', timings['sensitivity_s'])
     else:
         err = osm_result['error']
         sources['openstreetmap'] = {'status': 'error', 'details': {}, 'error': err}
@@ -367,6 +452,8 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                                  'reason': err['code']}
         warnings.append(_warning('source_failed', source='WorldPop', message=err['message']))
 
+    progress.finish('spatial_analysis', 'done' if 'data' in osm_result else 'failed')
+    progress.start('response')
     # --- Layers (display only) ------------------------------------------------------------------------------------
     stage = time.perf_counter()
     display, dinfo = _display_footprint(hazard, fp.crs, fp.pixel_size_m, settings)
@@ -387,7 +474,8 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     layers['buffer'] = {'type': 'FeatureCollection', 'features': [spatial.feature(
         spatial.to_wgs84(buf_geom, fp.crs), {'role': 'proximity_buffer', 'buffer_m': buffer_m})], 'metadata': {}}
 
-    logger.info('exposure_layers seconds=%.1f', time.perf_counter() - stage)
+    timings['layers_s'] = round(time.perf_counter() - stage, 1)
+    logger.info('exposure_layers seconds=%.1f', timings['layers_s'])
 
     # --- Assemble --------------------------------------------------------------------------------------------------------
     failed = [name for name, s in sources.items() if s['status'] == 'error']
@@ -398,6 +486,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
         'threshold_label': THRESHOLD_LABELS.get(area_key), 'event_date': ctx.get('fire_date'),
         'analysis_end': ctx.get('analysis_end'), 'date_windows': ctx.get('date_windows'),
         'model_version': ctx.get('model_version'), 'buffer_m': buffer_m,
+        'processing': {'timings_s': timings, 'served_from_cache': False},
         'generated_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'definitions': {
             'study_area': 'Area analysed by the wildfire model (municipality or drawn polygon).',
@@ -413,30 +502,83 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
         'analysis': analysis, 'metrics': metrics, 'details': details, 'sensitivity': sensitivity,
         'sources': sources, 'warnings': warnings, 'layers': layers,
         'notice': {'en': exposure_export.NOTICE_EN, 'es': exposure_export.NOTICE_ES}}
+    stage = time.perf_counter()
     response['exports'] = {
         'csv': exposure_export.build_csv(metrics, analysis, sources),
         'report': exposure_export.build_report(response)}
+    timings['exports_s'] = round(time.perf_counter() - stage, 1)
+    progress.finish('response')
     return response
 
 
 # ------------------------------------------------------------------------------------------------
-def analyze(req: ExposureRequest, settings: Settings | None = None) -> ExposureResponse:
-    settings = settings or get_settings()
-    started = time.perf_counter()
+def _result_key(req: ExposureRequest, ctx: dict, settings: Settings, buffer_m: float) -> str:
+    """Cache key: the analysis identity + every request parameter + every source/version setting that changes the result."""
+    return fingerprint(
+        'exposure', CACHE_SCHEMA, _identity(ctx), req.threshold, buffer_m, req.include_population,
+        req.include_sensitivity,
+        [settings.worldpop_api_version, settings.worldpop_year, settings.worldpop_resolution, settings.worldpop_base_url],
+        [settings.overpass_endpoint, settings.overpass_fallback_endpoints, settings.overpass_cell_km],
+        [settings.exposure_tile_px, settings.exposure_max_buffer_m, settings.exposure_max_layer_features])
+
+
+def _cacheable(settings: Settings) -> Callable[[dict], bool]:
+    def check(payload: dict) -> bool:
+        # A partial result (a source failed) is never cached: the user's retry must ask the sources again.
+        if payload.get('status') != 'success':
+            return False
+        import json
+        return len(json.dumps(payload, default=str)) <= settings.cache_max_item_bytes
+    return check
+
+
+def _compute_from_ref(req: ExposureRequest, ctx: dict, settings: Settings, progress: Progress) -> dict:
     with slot('exposure', settings.exposure_max_concurrent,
               busy_message='Another exposure analysis is running. Please retry in a minute.'):
+        timings: dict[str, Any] = {}
+        sel = threshold_key(req.threshold)[0]
+        keys = [k for _t, k, _a, _b in THRESHOLD_SPECS] if req.include_sensitivity else [sel]
+        if sel not in keys:
+            keys.append(sel)
+        progress.start('earth_observation')
+        fp = _footprint_for(ctx, keys, settings, progress, timings)
+        return build_response(req, ctx, fp, settings, progress=progress, timings=timings)
+
+
+def analyze(req: ExposureRequest, settings: Settings | None = None) -> ExposureResponse:
+    settings = settings or get_settings()
+    if not settings.exposure_enabled:
+        raise ServicePausedError('The Exposure module is temporarily paused by the operator.')
+    started = time.perf_counter()
+    progress = progress_mod.begin(req.progress_id, EXPOSURE_STAGES)
+    how = 'computed'
+    try:
         if req.analysis_ref:
-            ctx = _context_from_token(req, settings)
-            keys = [k for _t, k, _a, _b in THRESHOLD_SPECS] if req.include_sensitivity \
-                else [threshold_key(req.threshold)[0]]
-            sel = threshold_key(req.threshold)[0]
-            if sel not in keys:
-                keys.append(sel)
-            fp = _resolve_earth_engine(ctx, keys, settings)
-            extra = []
+            ctx = _context_from_token(req, settings)          # verifies the signature and the size limit first
+            buffer_m = settings.exposure_default_buffer_m if req.buffer_m is None else req.buffer_m
+            payload, how = _result_cache(settings).get_or_compute(
+                _result_key(req, ctx, settings, buffer_m),
+                lambda: _compute_from_ref(req, ctx, settings, progress),
+                ttl=settings.exposure_cache_ttl_seconds, cacheable=_cacheable(settings),
+                wait_seconds=settings.exposure_max_seconds + 300)
+            if how != 'computed':                              # nothing was recomputed for this request
+                for stage in EXPOSURE_STAGES:
+                    progress.finish(stage, 'cached')
+                logger.info('exposure_result_%s seconds=%.1f', how, time.perf_counter() - started)
+                payload = {**payload, 'analysis': {**payload['analysis'], 'processing': {
+                    **payload['analysis'].get('processing', {}), 'served_from_cache': True}}}
         else:
-            ctx, fp, extra = _external_footprint(req, settings)
-        payload = build_response(req, ctx, fp, settings, extra_warnings=extra)
-    logger.info('exposure_completed mode=%s status=%s seconds=%.1f', ctx['mode'], payload['status'],
-                time.perf_counter() - started)
+            with slot('exposure', settings.exposure_max_concurrent,
+                      busy_message='Another exposure analysis is running. Please retry in a minute.'):
+                ctx, fp, extra = _external_footprint(req, settings)
+                progress.finish('earth_observation', 'skipped')
+                payload = build_response(req, ctx, fp, settings, extra_warnings=extra, progress=progress)
+        if how == 'computed':
+            timings = payload['analysis'].get('processing', {}).get('timings_s', {})
+            timings['total_s'] = round(time.perf_counter() - started, 1)
+            logger.info('exposure_timing %s', ' '.join(f'{k}={v}' for k, v in timings.items()))
+    finally:
+        progress.close()
+    logger.info('exposure_completed mode=%s status=%s source=%s seconds=%.1f', payload['mode'], payload['status'],
+                how, time.perf_counter() - started)
     return ExposureResponse(**payload)

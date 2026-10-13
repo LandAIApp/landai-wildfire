@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -281,7 +282,8 @@ def _retry_wait(exc: ExternalSourceError, settings: Settings) -> float:
 
 
 def fetch(bounds: tuple[float, float, float, float], settings: Settings,
-          transport: httpx.BaseTransport | None = None, region: BaseGeometry | None = None) -> OsmData:
+          transport: httpx.BaseTransport | None = None, region: BaseGeometry | None = None,
+          on_progress: Callable[[int, int], None] | None = None) -> OsmData:
     """Retrieve OSM data for a bbox (west, south, east, north), in small cells when the bbox is large.
 
     Results are cached per cell. ``region`` (optional, WGS84) limits the cells to those touching it.
@@ -311,6 +313,8 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
             cached = _cache.get(cache_key)
             if cached is not None:
                 elements.extend(cached)
+                if on_progress:
+                    on_progress(index + 1, len(cells))
                 continue
             from_cache = False
             if index:
@@ -330,6 +334,8 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
             if len(elements) > settings.overpass_max_elements:
                 break
             logger.info('overpass_cell %s/%s elements=%s', index + 1, len(cells), len(cell_elements))
+            if on_progress:
+                on_progress(index + 1, len(cells))
     if len(elements) > settings.overpass_max_elements:
         raise ExternalSourceError('Too many OpenStreetMap elements returned. Draw a smaller area.',
                                   code='osm_too_many_elements', status_code=422,

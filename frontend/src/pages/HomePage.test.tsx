@@ -22,7 +22,7 @@ vi.mock('../components/MapView', () => ({
 
 const api = vi.hoisted(() => ({
   config: vi.fn(), departments: vi.fn(), municipalities: vi.fn(), preflight: vi.fn(), analyze: vi.fn(),
-  exposure: vi.fn(), recordedDemo: vi.fn(),
+  exposure: vi.fn(), recordedDemo: vi.fn(), progress: vi.fn(),
 }));
 vi.mock('../services/api', () => ({ API_BASE: 'http://test', api }));
 
@@ -42,6 +42,7 @@ beforeEach(() => {
   api.analyze.mockResolvedValue(ANALYSIS);
   api.exposure.mockResolvedValue(EXPOSURE);
   api.recordedDemo.mockResolvedValue(null);
+  api.progress.mockRejectedValue(new Error('unknown'));
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });
 
@@ -179,10 +180,51 @@ describe('Exposure: explicit action only', () => {
     fireEvent.change(screen.getByLabelText('Proximity zone (m)'), { target: { value: '300' } });
     click('Analyze Exposure');
     await waitFor(() => expect(api.exposure).toHaveBeenCalledTimes(1));
-    expect(api.exposure.mock.calls[0][0]).toEqual({ analysis_ref: 'signed-ref.abc', threshold: 0.5, buffer_m: 300 });
+    expect(api.exposure.mock.calls[0][0]).toEqual({
+      analysis_ref: 'signed-ref.abc', threshold: 0.5, buffer_m: 300, progress_id: expect.stringMatching(/^[0-9a-f]{16,64}$/) });
     const panel = await screen.findByTestId('exposure-panel');
     expect(within(panel).getByTestId('card-population').textContent).toMatch(/1,234/);
     expect(screen.getByTestId('map-mock').dataset.hasExposure).toBe('true');
+  });
+
+  it('ignores repeated clicks while an exposure analysis is running', async () => {
+    let resolve: (v: unknown) => void = () => undefined;
+    api.exposure.mockReturnValue(new Promise((r) => { resolve = r; }));
+    await runWildfire();
+    const button = screen.getByRole('button', { name: 'Analyze Exposure' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(api.exposure).toHaveBeenCalledTimes(1);
+    resolve(EXPOSURE);
+    await screen.findByTestId('exposure-panel');
+  });
+
+  it('shows the real stages reported by the backend (no percentage) while it runs', async () => {
+    let resolve: (v: unknown) => void = () => undefined;
+    api.exposure.mockReturnValue(new Promise((r) => { resolve = r; }));
+    api.progress.mockResolvedValue({ status: 'ok', elapsed_s: 42, finished: false, stages: [
+      { key: 'earth_observation', state: 'done', seconds: 40.2, detail: {} },
+      { key: 'openstreetmap', state: 'running', seconds: 2, detail: { cells_done: 3, cells_total: 9 } },
+      { key: 'population', state: 'pending', seconds: null, detail: {} },
+      { key: 'spatial_analysis', state: 'pending', seconds: null, detail: {} },
+      { key: 'response', state: 'pending', seconds: null, detail: {} }] });
+    await runWildfire();
+    click('Analyze Exposure');
+    const box = await screen.findByTestId('progress-exposure', undefined, { timeout: 4000 });
+    expect(box.textContent).toMatch(/Rebuilding the affected area/);
+    expect(box.textContent).toMatch(/Querying OpenStreetMap\s*3\/9/);
+    expect(box.textContent).not.toMatch(/%/);
+    resolve(EXPOSURE);
+    await screen.findByTestId('exposure-panel');
+  });
+
+  it('tells the user about the processing limitations and the paused service', async () => {
+    api.config.mockResolvedValue({ ...CONFIG, service: { ...CONFIG.service, exposure_enabled: false } });
+    await runWildfire();
+    expect(screen.getByTestId('exposure-limitations').textContent).toMatch(/one heavy analysis at a time/);
+    expect((screen.getByRole('button', { name: 'Analyze Exposure' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/temporarily paused by the operator/)).toBeTruthy();
   });
 
   it('disables the action when the area exceeds the exposure limit', async () => {

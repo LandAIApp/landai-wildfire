@@ -16,3 +16,5 @@ class PublicConfig(BaseModel):
     exposure: dict
     rate_limits: dict
     sources: dict
+    # Operational state and cost-protection limits the UI must show (never secrets).
+    service: dict = {}

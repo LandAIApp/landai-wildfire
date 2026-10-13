@@ -413,3 +413,15 @@ h3 .link-btn { font-size: 12px; font-weight: 500; }
 .bar-value { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 52px; text-align: right; }
 .table-toggle { margin: 4px 0 8px; font-size: 12px; }
 .table-toggle > summary { cursor: pointer; color: var(--muted); }
+
+/* Real processing stages */
+.progress-box { margin: 10px 0; }
+.progress-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.stage { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; color: var(--muted); }
+.stage.running { color: var(--text); font-weight: 600; }
+.stage.done, .stage.cached { color: var(--text); }
+.stage.failed { color: var(--error); }
+.stage-icon { display: inline-flex; justify-content: center; font-weight: 700; }
+.stage.done .stage-icon, .stage.cached .stage-icon { color: var(--accent); }
+.stage-label small { color: var(--muted); margin-left: 6px; font-weight: 400; }
+.stage-state { font-variant-numeric: tabular-nums; font-size: 12px; }

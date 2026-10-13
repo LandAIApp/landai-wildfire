@@ -105,3 +105,22 @@ def test_building_group_mapping():
     assert em.building_group({'building': 'apartments'}) == 'residential'
     assert em.building_group({'building': 'barn'}) == 'agricultural'
     assert em.building_group({'building': 'unknown_thing'}) == 'other'
+
+
+def test_shared_proximity_zone_and_skipped_buffer_do_not_change_the_numbers():
+    """Performance refactor guard: one pre-built buffer, and no buffer for the sensitivity table, give the same results."""
+    from shapely.geometry import box
+
+    from app.services import exposure_metrics
+    from test_exposure_service import fp_with, osm_data
+
+    fp = fp_with()
+    hazard = fp.footprints['burn072']
+    data = osm_data()
+    default = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=500)
+    zone = hazard.buffer(500, quad_segs=4)
+    shared = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=500, zone=zone)
+    assert shared.metrics == default.metrics and shared.details == default.details
+    no_buffer = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=0, with_layers=False)
+    for key in ('buildings_intersecting', 'roads_km_intersecting', 'health_intersecting', 'education_intersecting'):
+        assert no_buffer.metrics[key] == default.metrics[key]
