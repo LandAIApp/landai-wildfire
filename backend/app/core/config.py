@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     exposure_default_buffer_m: float = Field(500, validation_alias='EXPOSURE_DEFAULT_BUFFER_M')
     exposure_max_buffer_m: float = Field(2000, validation_alias='EXPOSURE_MAX_BUFFER_M')
     exposure_download_timeout_s: float = Field(600, validation_alias='EXPOSURE_DOWNLOAD_TIMEOUT_S')
+    # Earth Engine evaluates a download in memory: big areas are fetched as several tiles of at most this many
+    # pixels per side (+ a 104 px margin), a few in parallel. Lower it if EE reports 'User memory limit exceeded'.
+    exposure_tile_px: int = Field(640, validation_alias='EXPOSURE_TILE_PX')
+    exposure_tile_workers: int = Field(2, validation_alias='EXPOSURE_TILE_WORKERS')
     exposure_max_concurrent: int = Field(1, validation_alias='EXPOSURE_MAX_CONCURRENT')
     exposure_max_layer_features: int = Field(5000, validation_alias='EXPOSURE_MAX_LAYER_FEATURES')
     exposure_max_display_vertices: int = Field(60_000, validation_alias='EXPOSURE_MAX_DISPLAY_VERTICES')

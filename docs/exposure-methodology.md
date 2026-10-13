@@ -27,7 +27,7 @@ equivalence is claimed. Results must be reported together with the AOI that prod
 V7.6 graph, download the burn mask with `getDownloadURL` (GeoTIFF, 20 m, UTM), vectorise it with rasterio (8-connected,
 no `reduceToVectors`), and report area consistency against the analysis area (warning if >2 % apart). Simplification
 is applied only for display and WorldPop payloads and is always reported (vertices before/after, tolerance, area change).
-Resolutions: analysis/vectorisation 20 m; display geometry may be simplified; WorldPop 100 m or 1 km grid.
+Large areas are downloaded as tiles (`EXPOSURE_TILE_PX`, default 640 px + 104 px margin, cropped and stitched on the 20 m grid) because Earth Engine evaluates a download in memory (`User memory limit exceeded` otherwise); the margin exceeds the `connectedPixelCount(100)` neighbourhood so component sizes at tile borders are exact. Resolutions: analysis/vectorisation 20 m; display geometry may be simplified; WorldPop 100 m or 1 km grid.
 
 ## 4. OpenStreetMap (Overpass)
 POST with bbox, `out count` pre-check against `OVERPASS_MAX_ELEMENTS`, `out tags geom`, descriptive User-Agent,

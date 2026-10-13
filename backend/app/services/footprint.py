@@ -36,6 +36,10 @@ from . import spatial
 logger = logging.getLogger('landai.exposure')
 
 AOI_BAND = 'AOI'
+# postprocessing.py cleans the masks with connectedPixelCount(100, True): a pixel's component size is only
+# determined by pixels within 100 px of it, so every tile is requested with this much margin and cropped back.
+NEIGHBOURHOOD_PX = 100
+TILE_MARGIN_PX = NEIGHBOURHOOD_PX + 4
 # mask key (burn050) -> (threshold, area key wf050, band name Burn050)
 THRESHOLD_BY_KEY = {key: (t, area_key, band) for t, key, area_key, band in THRESHOLD_SPECS}
 
@@ -143,6 +147,108 @@ def _download(url: str, settings: Settings) -> bytes:
     return b''.join(chunks)
 
 
+@dataclass
+class TilePlan:
+    single: bool
+    x0: float = 0.0            # canvas origin (metric CRS): west edge
+    y1: float = 0.0            # canvas origin: north edge
+    width: int = 0             # canvas size in pixels
+    height: int = 0
+    tiles: list[tuple[int, int, int, int]] = field(default_factory=list)   # core (col0, col1, row0, row1)
+
+
+def plan_tiles(bounds: tuple[float, float, float, float], crs: str, tile_px: int,
+               scale: float = AREA_SCALE) -> TilePlan:
+    """Split the AOI bounding box into square tiles of at most ``tile_px`` pixels per side.
+
+    Earth Engine evaluates a download request in memory as a whole (the area statistics use tileScale for that
+    reason), so a municipality-sized request fails with 'User memory limit exceeded'. Several smaller requests
+    keep each evaluation small; the grid is anchored on multiples of ``scale`` so tiles line up exactly.
+    """
+    width_m, height_m = spatial.projected_bbox_size(bounds, crs)
+    if np.ceil(width_m / scale) <= tile_px and np.ceil(height_m / scale) <= tile_px:
+        return TilePlan(single=True)
+    west, south, east, north = bounds
+    t = spatial._transformer(spatial.WGS84, crs)
+    xs, ys = zip(*[t.transform(x, y) for x, y in ((west, south), (east, south), (east, north), (west, north))])
+    x0 = float(np.floor(min(xs) / scale) * scale)
+    y1 = float(np.ceil(max(ys) / scale) * scale)
+    width = int(np.ceil((max(xs) - x0) / scale))
+    height = int(np.ceil((y1 - min(ys)) / scale))
+    tiles = [(c, min(c + tile_px, width), r, min(r + tile_px, height))
+             for r in range(0, height, tile_px) for c in range(0, width, tile_px)]
+    return TilePlan(single=False, x0=x0, y1=y1, width=width, height=height, tiles=tiles)
+
+
+def _tile_region(plan: TilePlan, tile: tuple[int, int, int, int], crs: str, scale: float = AREA_SCALE):
+    c0, c1, r0, r1 = tile
+    m = TILE_MARGIN_PX
+    xmin, xmax = plan.x0 + (c0 - m) * scale, plan.x0 + (c1 + m) * scale
+    ymax, ymin = plan.y1 - (r0 - m) * scale, plan.y1 - (r1 + m) * scale
+    return ee.Geometry.Rectangle([xmin, ymin, xmax, ymax], crs, False)
+
+
+def _paste(canvas: dict[str, np.ndarray], arrays: dict[str, np.ndarray], transform, plan: TilePlan,
+           tile: tuple[int, int, int, int], scale: float = AREA_SCALE) -> None:
+    """Copy the CORE of a downloaded tile (margin dropped) into the canvas, checking grid alignment."""
+    col_off = (transform.c - plan.x0) / scale
+    row_off = (plan.y1 - transform.f) / scale
+    if (abs(col_off - round(col_off)) > 0.05 or abs(row_off - round(row_off)) > 0.05
+            or abs(abs(transform.a) - scale) > 1e-6 or abs(abs(transform.e) - scale) > 1e-6):
+        raise FootprintError('Earth Engine returned a raster tile on an unexpected pixel grid.',
+                             details={'col_offset': col_off, 'row_offset': row_off, 'pixel': float(transform.a)})
+    col_off, row_off = int(round(col_off)), int(round(row_off))
+    c0, c1, r0, r1 = tile
+    any_band = next(iter(arrays.values()))
+    h, w = any_band.shape
+    gc0, gc1 = max(c0, col_off), min(c1, col_off + w)
+    gr0, gr1 = max(r0, row_off), min(r1, row_off + h)
+    if gc0 >= gc1 or gr0 >= gr1:
+        return
+    for name, array in arrays.items():
+        canvas[name][gr0:gr1, gc0:gc1] = array[gr0 - row_off:gr1 - row_off, gc0 - col_off:gc1 - col_off]
+
+
+def _fetch_tiles(plan: TilePlan, fetch, all_names: list[str], crs: str, settings: Settings,
+                 aoi_metric: BaseGeometry | None):
+    """Download every tile (a few in parallel) and stitch the cores into one raster on the canvas grid."""
+    from concurrent.futures import ThreadPoolExecutor
+    from rasterio.transform import from_origin
+
+    scale = AREA_SCALE
+    canvas = {n: np.zeros((plan.height, plan.width), dtype='uint8') for n in all_names}
+    work = []
+    for index, tile in enumerate(plan.tiles):
+        c0, c1, r0, r1 = tile
+        if aoi_metric is not None:       # skip tiles that do not touch the (known) AOI
+            box_m = Polygon.from_bounds(plan.x0 + c0 * scale, plan.y1 - r1 * scale,
+                                        plan.x0 + c1 * scale, plan.y1 - r0 * scale)
+            if not aoi_metric.intersects(box_m):
+                continue
+        work.append((index, tile))
+    logger.info('footprint_tiles total=%s requested=%s canvas=%sx%s', len(plan.tiles), len(work),
+                plan.width, plan.height)
+
+    def run(item):
+        index, tile = item
+        try:
+            arrays, transform, tile_crs = fetch({'region': _tile_region(plan, tile, crs)})
+        except WildfireError as exc:
+            if isinstance(exc.details, dict):
+                exc.details['tile'] = f'{index + 1}/{len(plan.tiles)}'
+            raise
+        return tile, arrays, transform, tile_crs
+
+    workers = max(1, int(settings.exposure_tile_workers))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for tile, arrays, transform, tile_crs in pool.map(run, work):
+            if tile_crs and tile_crs.upper() != crs.upper():
+                raise FootprintError('Earth Engine returned a tile in an unexpected CRS.',
+                                     details={'expected': crs, 'found': tile_crs})
+            _paste(canvas, arrays, transform, plan, tile)
+    return canvas, from_origin(plan.x0, plan.y1, scale, scale), crs
+
+
 def extract_from_earth_engine(result: dict, aoi: ee.Geometry, bounds: tuple[float, float, float, float],
                               mask_keys: list[str], settings: Settings,
                               aoi_metric: BaseGeometry | None = None,
@@ -167,16 +273,25 @@ def extract_from_earth_engine(result: dict, aoi: ee.Geometry, bounds: tuple[floa
     bands.append(ee.Image.constant(1).clip(aoi).unmask(0).toByte().rename(AOI_BAND))
     image = ee.Image.cat(bands)
     ensure_initialized()
-    try:
-        url = image.getDownloadURL({
-            'region': ee.Geometry.Rectangle([west, south, east, north], None, False),
-            'crs': crs, 'scale': AREA_SCALE, 'format': 'GEO_TIFF', 'filePerBand': False})
-    except ee.EEException as exc:
-        raise map_ee_error(exc, 'preparing the affected-area raster') from exc
-    except WildfireError:
-        raise
-    content = downloader(url, settings)
-    arrays, transform, file_crs = read_download(content, names + [AOI_BAND])
+    all_names = names + [AOI_BAND]
+    plan = plan_tiles(bounds, crs, settings.exposure_tile_px)
+
+    def fetch(region_params: dict) -> tuple[dict[str, np.ndarray], object, str]:
+        try:
+            url = image.getDownloadURL({**region_params, 'crs': crs, 'scale': AREA_SCALE,
+                                        'format': 'GEO_TIFF', 'filePerBand': False})
+        except ee.EEException as exc:
+            raise map_ee_error(exc, 'preparing the affected-area raster') from exc
+        except WildfireError:
+            raise
+        return read_download(downloader(url, settings), all_names)
+
+    if plan.single:
+        # small area: one request over the AOI bounding box (no margins needed, nothing to stitch)
+        region = ee.Geometry.Rectangle([west, south, east, north], None, False)
+        arrays, transform, file_crs = fetch({'region': region})
+    else:
+        arrays, transform, file_crs = _fetch_tiles(plan, fetch, all_names, crs, settings, aoi_metric)
     if file_crs and file_crs.upper() != crs.upper():
         # keep the raster's own CRS as the metric CRS (it is projected); never assume
         crs = file_crs

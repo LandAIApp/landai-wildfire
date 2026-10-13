@@ -106,3 +106,81 @@ def test_extract_end_to_end_with_mocked_earth_engine(monkeypatch):
     assert fp.pixel_counts == {'burn072': 100} and fp.grid['requested_scale_m'] == 20
     region = fake_ee.Image.cat.return_value.getDownloadURL.call_args[0][0]
     assert region['scale'] == 20 and region['format'] == 'GEO_TIFF' and region['crs'].startswith('EPSG:326')
+
+
+# ---- tiled download (Earth Engine 'User memory limit exceeded' on municipality-sized requests) ----------
+BOUNDS = (-74.50, 4.60, -74.48, 4.62)          # ~2.2 km square -> ~110 x 110 px
+
+
+def test_plan_tiles_single_for_small_and_grid_for_large():
+    assert footprint.plan_tiles(BOUNDS, CRS, 640).single
+    plan = footprint.plan_tiles(BOUNDS, CRS, 40)
+    assert not plan.single and len(plan.tiles) == 9 and plan.width > 100 and plan.height > 100
+    covered = sum((c1 - c0) * (r1 - r0) for c0, c1, r0, r1 in plan.tiles)
+    assert covered == plan.width * plan.height                      # cores partition the canvas exactly
+    assert plan.x0 % 20 == 0 and plan.y1 % 20 == 0                  # anchored on the 20 m grid
+
+
+def _tiled_extract(monkeypatch, aoi_metric=None, shift=0.0):
+    from unittest.mock import MagicMock
+    plan = footprint.plan_tiles(BOUNDS, CRS, 40)
+    rng = np.random.default_rng(1)
+    glob = np.zeros((plan.height, plan.width), dtype='uint8')
+    glob[30:80, 30:50] = 1                                           # crosses tile borders at 40 and 80
+    glob[5:12, 90:104] = 1
+    glob = np.where(rng.random(glob.shape) < 0.0, 1, glob).astype('uint8')
+    fake_ee = MagicMock()
+    monkeypatch.setattr(footprint, 'ee', fake_ee)
+    monkeypatch.setattr(footprint, 'ensure_initialized', lambda: None)
+    monkeypatch.setattr(footprint, '_tile_region', lambda plan_, tile, crs, scale=20: (
+        plan_.x0 + (tile[0] - footprint.TILE_MARGIN_PX) * 20 + shift,
+        plan_.y1 - (tile[3] + footprint.TILE_MARGIN_PX) * 20,
+        plan_.x0 + (tile[1] + footprint.TILE_MARGIN_PX) * 20,
+        plan_.y1 - (tile[2] - footprint.TILE_MARGIN_PX) * 20))
+    fake_ee.Image.cat.return_value.getDownloadURL.side_effect = lambda params: params['region']
+    calls = []
+
+    def downloader(region, settings):
+        calls.append(region)
+        xmin, ymin, xmax, ymax = region
+        c0, r0 = round((xmin - plan.x0 - shift) / 20), round((plan.y1 - ymax) / 20)
+        w, h = round((xmax - xmin) / 20), round((ymax - ymin) / 20)
+        win = np.zeros((h, w), dtype='uint8')
+        sr0, sr1, sc0, sc1 = max(r0, 0), min(r0 + h, plan.height), max(c0, 0), min(c0 + w, plan.width)
+        win[sr0 - r0:sr1 - r0, sc0 - c0:sc1 - c0] = glob[sr0:sr1, sc0:sc1]
+        aoi = np.ones_like(win)
+        data = np.stack([win, aoi])
+        with MemoryFile() as mem:
+            with mem.open(driver='GTiff', height=h, width=w, count=2, dtype='uint8', crs=CRS,
+                          transform=from_origin(xmin, ymax, 20, 20)) as dst:
+                dst.write(data)
+            return mem.read()
+
+    s = Settings(_env_file=None, exposure_tile_px=40, exposure_tile_workers=3)
+    fp = footprint.extract_from_earth_engine({'burn072': MagicMock()}, MagicMock(), BOUNDS, ['burn072'], s,
+                                             aoi_metric=aoi_metric, downloader=downloader)
+    return fp, glob, calls
+
+
+def test_tiled_extract_stitches_tiles_without_seams(monkeypatch):
+    fp, glob, calls = _tiled_extract(monkeypatch)
+    assert len(calls) == 9
+    assert fp.pixel_counts == {'burn072': int(glob.sum())}
+    assert fp.footprints['burn072'].area == pytest.approx(int(glob.sum()) * 400)
+    assert fp.footprints['burn072'].geom_type == 'MultiPolygon' and len(fp.footprints['burn072'].geoms) == 2
+    # the blob that crosses two tile borders is ONE polygon: no seam
+    areas = sorted(g.area for g in fp.footprints['burn072'].geoms)
+    assert areas[-1] == pytest.approx(50 * 20 * 400)
+
+
+def test_tiled_extract_skips_tiles_outside_known_aoi(monkeypatch):
+    from shapely.geometry import box
+    plan = footprint.plan_tiles(BOUNDS, CRS, 40)
+    corner = box(plan.x0, plan.y1 - 30 * 20, plan.x0 + 30 * 20, plan.y1)      # inside the first tile only
+    fp, _glob, calls = _tiled_extract(monkeypatch, aoi_metric=corner)
+    assert len(calls) == 1 and fp.aoi_from_raster is False
+
+
+def test_misaligned_tile_grid_is_an_error(monkeypatch):
+    with pytest.raises(FootprintError, match='unexpected pixel grid'):
+        _tiled_extract(monkeypatch, shift=7.0)                       # tiles offset by 7 m: not on the 20 m grid
