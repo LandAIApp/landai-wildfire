@@ -88,7 +88,7 @@ def test_fetch_http_errors_map_to_codes_without_retry(status, code):
         return httpx.Response(status)
 
     with pytest.raises(ExternalSourceError) as exc:
-        osm.fetch(BOUNDS, settings(overpass_fallback_endpoints=''), transport=transport(handler))
+        osm.fetch(BOUNDS, settings(overpass_fallback_endpoints='', overpass_rate_limit_retries=0), transport=transport(handler))
     assert exc.value.code == code and len(calls) == 1        # a single instance is never retried
 
 
@@ -213,13 +213,13 @@ def _elements_handler(hosts=None, fail_hosts=()):
 def test_plan_cells_small_bbox_is_a_single_query_and_big_is_split():
     s = settings()
     assert osm.plan_cells(BOUNDS, s) == [BOUNDS]
-    cells = osm.plan_cells(BIG, s)
+    cells = osm.plan_cells(BIG, settings(overpass_cell_km=3.0))
     assert len(cells) >= 9 and all(c[0] >= BIG[0] and c[2] <= BIG[2] for c in cells)
 
 
 def test_plan_cells_drops_cells_outside_the_region():
     from shapely.geometry import box
-    s = settings()
+    s = settings(overpass_cell_km=3.0)
     allc = osm.plan_cells(BIG, s)
     some = osm.plan_cells(BIG, s, region=box(-74.10, 4.50, -74.07, 4.53))
     assert 0 < len(some) < len(allc)
@@ -254,3 +254,64 @@ def test_too_many_cells_is_rejected_before_any_request():
     with pytest.raises(ExternalSourceError) as exc:
         osm.fetch(BIG, s, transport=transport(_elements_handler(hosts)))
     assert exc.value.code == 'osm_too_many_elements' and not hosts
+
+
+def test_rate_limit_waits_and_asks_the_same_server_again(monkeypatch):
+    osm.clear_cache(); reset_gates()
+    sleeps, hosts = [], []
+    monkeypatch.setattr(osm.time, 'sleep', lambda sec: sleeps.append(sec))
+    state = {'n': 0}
+
+    def handler(request):
+        hosts.append(request.url.host)
+        state['n'] += 1
+        body = request.content.decode()
+        if state['n'] == 1:
+            return httpx.Response(429, headers={'Retry-After': '7'})
+        if 'out+count' in body or 'out%20count' in body or 'out count' in body:
+            return httpx.Response(200, json={'elements': [{'type': 'count', 'tags': {'total': '1'}}]})
+        return httpx.Response(200, json={'elements': []})
+
+    s = settings(overpass_fallback_endpoints='https://mirror.example.org/x')
+    data = osm.fetch(BOUNDS, s, transport=transport(handler))
+    assert 7.0 in sleeps and set(hosts) == {'overpass-api.de'} and data.endpoint.endswith('interpreter')
+
+
+def test_rate_limit_retries_are_bounded_then_mirror_is_used(monkeypatch):
+    osm.clear_cache(); reset_gates()
+    monkeypatch.setattr(osm.time, 'sleep', lambda sec: None)
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        return httpx.Response(429) if request.url.host == 'overpass-api.de' else httpx.Response(
+            200, json={'elements': [{'type': 'count', 'tags': {'total': '1'}}]})
+
+    s = settings(overpass_fallback_endpoints='https://mirror.example.org/x', overpass_rate_limit_retries=2)
+    osm.fetch(BOUNDS, s, transport=transport(handler))
+    assert hosts.count('overpass-api.de') == 3 and 'mirror.example.org' in hosts      # 1 try + 2 waits, then mirror
+
+
+def test_failed_cell_reports_progress_and_keeps_finished_cells_cached(monkeypatch):
+    osm.clear_cache(); reset_gates()
+    monkeypatch.setattr(osm.time, 'sleep', lambda sec: None)
+    state = {'n': 0}
+
+    def handler(request):
+        state['n'] += 1
+        if state['n'] >= 3:
+            return httpx.Response(504)
+        return httpx.Response(200, json={'elements': []})
+
+    s = settings(overpass_fallback_endpoints='', overpass_cell_km=3.0)
+    with pytest.raises(ExternalSourceError) as exc:
+        osm.fetch(BIG, s, transport=transport(handler))
+    assert exc.value.details['cells_done'] == 2 and exc.value.details['cells_total'] >= 9
+    calls_before = state['n']
+    state['n'] = 0
+
+    def ok(request):
+        state['n'] += 1
+        return httpx.Response(200, json={'elements': []})
+    osm.fetch(BIG, s, transport=transport(ok))
+    assert state['n'] == exc.value.details['cells_total'] - 2           # resumed: the first two cells came from the cache

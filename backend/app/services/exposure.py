@@ -227,12 +227,17 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                                   details={'max_buffer_m': settings.exposure_max_buffer_m})
     warnings: list[dict] = [_warning(w['code'], **w.get('params', {})) for w in (extra_warnings or [])]
 
-    # Footprint bbox (largest footprint kept for the sensitivity table) + buffer -> OSM query box
+    # Footprint bbox (largest footprint kept for the sensitivity table) + buffer -> OSM query box.
+    # The bbox of a buffered geometry is just its bbox grown by the distance: no (slow) buffer needed for that.
+    prep_started = time.perf_counter()
     largest = max(fp.footprints.values(), key=lambda g: g.area)
-    query_geom = spatial.to_wgs84(box(*largest.buffer(buffer_m + 50, quad_segs=1).bounds), fp.crs)
-    bounds = query_geom.bounds
-    # cells that cannot touch the (buffered) footprint are not requested from Overpass
-    osm_region = spatial.to_wgs84(largest.buffer(buffer_m + 50, quad_segs=1), fp.crs)
+    d = buffer_m + 50
+    minx, miny, maxx, maxy = largest.bounds
+    bounds = spatial.to_wgs84(box(minx - d, miny - d, maxx + d, maxy + d), fp.crs).bounds
+    # cells that cannot touch the (buffered) footprint are not requested from Overpass; the outline is
+    # simplified first (40 m << the 500 m margin) because buffering the raw raster outline takes a minute
+    osm_region = spatial.to_wgs84(largest.simplify(40).buffer(d, quad_segs=1), fp.crs)
+    logger.info('exposure_prepared seconds=%.1f', time.perf_counter() - prep_started)
 
     started = time.perf_counter()
     osm_result: dict[str, Any] = {}

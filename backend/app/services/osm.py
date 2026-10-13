@@ -234,30 +234,50 @@ def plan_cells(bounds: tuple[float, float, float, float], settings: Settings,
 
 
 def _query_bbox(client_factory, settings: Settings, bounds, endpoints: list[str], with_count: bool):
-    """Run one bbox query, trying each endpoint ONCE in order. Returns (elements, endpoint_used)."""
+    """Run one bbox query, trying each endpoint ONCE in order. Returns (elements, endpoint_used).
+
+    A 429 ("no free slot") is the server asking us to wait: we wait for what it says (bounded) and ask the SAME
+    server again, at most ``overpass_rate_limit_retries`` times, before moving on to the next mirror.
+    """
     count_query, data_query = build_queries(bounds, settings)
     last_error: ExternalSourceError | None = None
     for attempt, endpoint in enumerate(endpoints):
         if attempt:
             time.sleep(settings.overpass_fallback_pause_s)
-        try:
-            with client_factory() as client:
-                if with_count:
-                    total = _total_from_count(_post(client, settings, count_query, endpoint))
-                    if total is not None and total > settings.overpass_max_elements:
-                        raise ExternalSourceError(
-                            f'The area contains about {total:,} OpenStreetMap elements, above the limit of '
-                            f'{settings.overpass_max_elements:,}. Draw a smaller area.',
-                            code='osm_too_many_elements', status_code=422,
-                            details={'elements': total, 'limit': settings.overpass_max_elements})
-                payload = _post(client, settings, data_query, endpoint)
-            return payload.get('elements', []), endpoint
-        except ExternalSourceError as exc:
-            if exc.code not in ('osm_timeout', 'osm_unavailable', 'osm_rate_limited'):
-                raise                      # a size/limit problem is the same on every mirror
-            logger.warning('overpass_endpoint_failed endpoint=%s code=%s', endpoint, exc.code)
-            last_error = exc
+        waits = 0
+        while True:
+            try:
+                with client_factory() as client:
+                    if with_count:
+                        total = _total_from_count(_post(client, settings, count_query, endpoint))
+                        if total is not None and total > settings.overpass_max_elements:
+                            raise ExternalSourceError(
+                                f'The area contains about {total:,} OpenStreetMap elements, above the limit of '
+                                f'{settings.overpass_max_elements:,}. Draw a smaller area.',
+                                code='osm_too_many_elements', status_code=422,
+                                details={'elements': total, 'limit': settings.overpass_max_elements})
+                    payload = _post(client, settings, data_query, endpoint)
+                return payload.get('elements', []), endpoint
+            except ExternalSourceError as exc:
+                if exc.code not in ('osm_timeout', 'osm_unavailable', 'osm_rate_limited'):
+                    raise                      # a size/limit problem is the same on every mirror
+                logger.warning('overpass_endpoint_failed endpoint=%s code=%s', endpoint, exc.code)
+                last_error = exc
+                if exc.code == 'osm_rate_limited' and waits < settings.overpass_rate_limit_retries:
+                    waits += 1
+                    time.sleep(_retry_wait(exc, settings))
+                    continue
+                break
     raise last_error  # type: ignore[misc]
+
+
+def _retry_wait(exc: ExternalSourceError, settings: Settings) -> float:
+    retry_after = exc.details.get('retry_after') if isinstance(exc.details, dict) else None
+    try:
+        wait = float(retry_after)
+    except (TypeError, ValueError):
+        wait = settings.overpass_rate_limit_wait_s
+    return max(1.0, min(wait, settings.overpass_rate_limit_wait_s * 2))
 
 
 def fetch(bounds: tuple[float, float, float, float], settings: Settings,
@@ -295,7 +315,13 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
             from_cache = False
             if index:
                 time.sleep(settings.overpass_cell_pause_s)
-            cell_elements, endpoint = _query_bbox(client_factory, settings, cell, endpoints, with_count=single)
+            try:
+                cell_elements, endpoint = _query_bbox(client_factory, settings, cell, endpoints, with_count=single)
+            except ExternalSourceError as exc:
+                if len(cells) > 1:     # finished cells stay cached: the next attempt resumes where this one stopped
+                    base = exc.details if isinstance(exc.details, dict) else {}
+                    exc.details = {**base, 'cells_done': index, 'cells_total': len(cells)}
+                raise
             if endpoint != used:                        # keep using the server that last answered
                 endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
                 used = endpoint
