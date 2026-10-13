@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 860" width="1500" height="860" font-family="Poppins, 'Segoe UI', Arial, sans-serif">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22d8b4"/></marker>
+<style>
+.bg{fill:#071110}.zone{fill:#0b1a18;stroke:#1f4b44;stroke-width:1.5}
+.box{fill:#0f2320;stroke:#2c6a5f;stroke-width:1.3}.new{fill:#10302b;stroke:#22d8b4;stroke-width:1.8}.ext{fill:#121b25;stroke:#4c6a85;stroke-width:1.4}
+.t{fill:#eaf6f3;font-size:16px;font-weight:600}.s{fill:#8fb0aa;font-size:13px}.z{fill:#22d8b4;font-size:13px;font-weight:700;letter-spacing:.08em}
+.l{stroke:#22d8b4;stroke-width:2.2;fill:none}.c{fill:#eaf6f3;font-size:12px;font-weight:600}
+.n{fill:#22d8b4}.nt{fill:#04201b;font-size:12px;font-weight:700;text-anchor:middle}
+</style></defs>
+<rect class="bg" width="1500" height="860"/>
+<text x="40" y="48" class="t" style="font-size:26px">Land AI Wildfire Intelligence v2</text>
+<text x="40" y="74" class="s">Arquitectura general · sin base de datos · datos externos abiertos</text>
+
+<!-- FRONTEND -->
+<rect class="zone" x="40" y="105" width="400" height="580" rx="16"/>
+<text x="62" y="135" class="z">FRONTEND · GITHUB PAGES</text>
+<rect class="new" x="62" y="152" width="356" height="92" rx="12"/>
+<text x="80" y="180" class="t">Área de estudio</text>
+<text x="80" y="202" class="s">A · Municipio (sin cambios)</text>
+<text x="80" y="222" class="s">B · Polígono dibujado (ha y km², límites)</text>
+<rect class="box" x="62" y="262" width="356" height="76" rx="12"/>
+<text x="80" y="290" class="t">Análisis de incendio</text>
+<text x="80" y="312" class="s">Área quemada, umbrales, capas Sentinel-2/VIIRS</text>
+<rect class="new" x="62" y="356" width="356" height="108" rx="12"/>
+<text x="80" y="384" class="t">Impacto y exposición (ES / EN)</text>
+<text x="80" y="406" class="s">Tarjetas · gráficos de barras · sensibilidad</text>
+<text x="80" y="426" class="s">Clic en servicio → zoom en el mapa</text>
+<text x="80" y="446" class="s">Estado por fuente (OSM · WorldPop · EO)</text>
+<rect class="new" x="62" y="482" width="356" height="60" rx="12"/>
+<text x="80" y="508" class="t">Exportar</text>
+<text x="80" y="528" class="s">GeoJSON · CSV · Informe JSON</text>
+<rect class="box" x="62" y="560" width="356" height="60" rx="12"/>
+<text x="80" y="586" class="t">Mapa Leaflet</text>
+<text x="80" y="606" class="s">Base OpenStreetMap · capas de exposición</text>
+<text x="62" y="654" class="s">React 18 · Vite · TypeScript</text>
+
+<!-- BACKEND -->
+<rect class="zone" x="540" y="105" width="420" height="580" rx="16"/>
+<text x="562" y="135" class="z">BACKEND · FASTAPI EN CLOUD RUN</text>
+<rect class="box" x="562" y="152" width="376" height="86" rx="12"/>
+<text x="580" y="180" class="t">API y protecciones</text>
+<text x="580" y="202" class="s">/config · /wildfire/analyze · /exposure/analyze</text>
+<text x="580" y="222" class="s">Validación · límites de tasa · CORS restringido</text>
+<rect class="box" x="562" y="256" width="376" height="84" rx="12"/>
+<text x="580" y="284" class="t">Motor de incendio V7.6 (sin cambios)</text>
+<text x="580" y="306" class="s">Random Forest · NBR/NDVI · semillas VIIRS</text>
+<text x="580" y="326" class="s">Referencia firmada (analysis_ref), sin estado</text>
+<rect class="new" x="562" y="358" width="376" height="206" rx="12"/>
+<text x="580" y="386" class="t">Módulo de exposición (nuevo)</text>
+<text x="580" y="414" class="s">1 · Huella afectada real a 20 m (mosaicos)</text>
+<text x="580" y="438" class="s">2 · Edificios, vías, salud y educación (celdas OSM)</text>
+<text x="580" y="462" class="s">3 · Población estimada (tarea asíncrona)</text>
+<text x="580" y="486" class="s">4 · Intersección exacta, zona de 500 m, sensibilidad</text>
+<text x="580" y="510" class="s">5 · Capas y exportaciones · fuente caída ≠ cero</text>
+<text x="580" y="540" class="s">Caché en memoria · un análisis pesado a la vez</text>
+<rect class="box" x="562" y="582" width="376" height="76" rx="12"/>
+<text x="580" y="610" class="t">Secretos</text>
+<text x="580" y="632" class="s">Cuenta de servicio EE y clave WorldPop</text>
+<text x="580" y="650" class="s">solo en variables de entorno del backend</text>
+
+<!-- EXTERNAL -->
+<rect class="zone" x="1060" y="105" width="400" height="580" rx="16"/>
+<text x="1082" y="135" class="z">FUENTES EXTERNAS (ABIERTAS)</text>
+<rect class="ext" x="1082" y="152" width="356" height="188" rx="12"/>
+<text x="1100" y="180" class="t">Google Earth Engine</text>
+<text x="1100" y="206" class="s">Sentinel-2 · VIIRS · límites administrativos</text>
+<text x="1100" y="232" class="s">· Entrena y clasifica la quema (motor V7.6)</text>
+<text x="1100" y="254" class="s">· Entrega el raster de quema (GeoTIFF) para</text>
+<text x="1100" y="274" class="s">  la huella afectada a 20 m, por mosaicos</text>
+<text x="1100" y="304" class="s">Cuenta de servicio · cuota de EE</text>
+<rect class="ext" x="1082" y="358" width="356" height="128" rx="12"/>
+<text x="1100" y="386" class="t">OpenStreetMap · Overpass API</text>
+<text x="1100" y="410" class="s">Edificios, vías, salud, educación</text>
+<text x="1100" y="432" class="s">Consultas por celdas, espejos de respaldo,</text>
+<text x="1100" y="452" class="s">espera ante 429 · © colaboradores OSM (ODbL)</text>
+<rect class="ext" x="1082" y="504" width="356" height="128" rx="12"/>
+<text x="1100" y="532" class="t">WorldPop API v2</text>
+<text x="1100" y="556" class="s">Población en malla de 100 m (año 2020)</text>
+<text x="1100" y="578" class="s">Tarea asíncrona sobre la huella afectada</text>
+<text x="1100" y="598" class="s">CC BY 4.0 · estimación, no censo</text>
+
+<!-- ARROWS -->
+<path class="l" d="M418 198 H562" marker-end="url(#a)"/><text x="446" y="188" class="c">HTTPS · JSON</text>
+<path class="l" d="M562 420 H418" marker-end="url(#a)"/><text x="450" y="440" class="c">Resultados</text>
+<path class="l" d="M938 298 H1082" marker-end="url(#a)"/><text x="962" y="288" class="c">Análisis</text>
+<path class="l" d="M938 400 H1082" marker-end="url(#a)"/><text x="976" y="390" class="c">OSM</text>
+<path class="l" d="M938 540 H1082" marker-end="url(#a)"/><text x="958" y="530" class="c">Población</text>
+
+<!-- BOTTOM -->
+<rect class="zone" x="40" y="712" width="1420" height="110" rx="16"/>
+<text x="62" y="742" class="z">DESPLIEGUE Y COSTO</text>
+<text x="62" y="772" class="s">Frontend estático en GitHub Pages (gratis) · Backend en Cloud Run (pago por uso, escala a cero, máx. 3 instancias)</text>
+<text x="62" y="796" class="s">Sin base de datos ni servicios de pago adicionales · límites por IP · modo demo solo con resultados reales grabados</text>
+<rect class="new" x="1150" y="738" width="22" height="16" rx="4"/><text x="1182" y="751" class="s">Nuevo en v2</text>
+<rect class="box" x="1150" y="768" width="22" height="16" rx="4"/><text x="1182" y="781" class="s">Sin cambios</text>
+<rect class="ext" x="1310" y="738" width="22" height="16" rx="4"/><text x="1342" y="751" class="s">Externo</text>
+</svg>

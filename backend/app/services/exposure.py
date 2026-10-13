@@ -264,6 +264,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                 'ok' if 'data' in osm_result else 'error',
                 'skipped' if not req.include_population else ('ok' if 'data' in pop_result else 'error'))
 
+    zone = None
     area_ha = round(spatial.area_ha(hazard), 2)
     metrics: dict[str, Any] = {
         'affected_area_ha': area_ha, 'affected_area_km2': round(area_ha / 100, 3), 'aoi_ha': round(float(ctx['aoi_hectares']), 2),
@@ -292,8 +293,13 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     # --- OpenStreetMap ----------------------------------------------------------------------------------
     if 'data' in osm_result:
         data: osm.OsmData = osm_result['data']
-        em = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=buffer_m,
+        stage = time.perf_counter()
+        zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard   # built once, reused below
+        logger.info('exposure_zone seconds=%.1f', time.perf_counter() - stage)
+        stage = time.perf_counter()
+        em = exposure_metrics.compute(data, hazard, fp.crs, buffer_m=buffer_m, zone=zone,
                                       max_layer_features=settings.exposure_max_layer_features)
+        logger.info('exposure_metrics seconds=%.1f', time.perf_counter() - stage)
         metrics.update(em.metrics)
         details.update(em.details)
         for w in em.warnings:
@@ -306,12 +312,14 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
             'elements': data.element_count, 'from_cache': data.from_cache,
             'license': 'ODbL 1.0 - © OpenStreetMap contributors',
             'completeness': 'OpenStreetMap coverage varies by place; absence of features is not evidence of absence.'}}
+        stage = time.perf_counter()
         if req.include_sensitivity and ctx['mode'] == 'wildfire_analysis':
             for value, key, akey, _band in THRESHOLD_SPECS:
                 geom = fp.footprints.get(key)
                 if geom is None:
                     continue
-                sm = exposure_metrics.compute(data, geom, fp.crs, buffer_m=buffer_m, with_layers=False,
+                # the table only reports what intersects, so no proximity buffer is built for these thresholds
+                sm = exposure_metrics.compute(data, geom, fp.crs, buffer_m=0, with_layers=False,
                                               max_layer_features=settings.exposure_max_layer_features)
                 sensitivity.append({
                     'threshold': value, 'key': akey, 'label': THRESHOLD_LABELS[akey],
@@ -321,6 +329,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                     'health_intersecting': sm.metrics['health_intersecting']['value'],
                     'education_intersecting': sm.metrics['education_intersecting']['value'],
                     'selected': key == sel_key})
+        logger.info('exposure_sensitivity seconds=%.1f', time.perf_counter() - stage)
     else:
         err = osm_result['error']
         sources['openstreetmap'] = {'status': 'error', 'details': {}, 'error': err}
@@ -359,6 +368,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
         warnings.append(_warning('source_failed', source='WorldPop', message=err['message']))
 
     # --- Layers (display only) ------------------------------------------------------------------------------------
+    stage = time.perf_counter()
     display, dinfo = _display_footprint(hazard, fp.crs, fp.pixel_size_m, settings)
     if dinfo['simplified']:
         warnings.append(_warning('footprint_display_simplified', before=dinfo['vertices_before'],
@@ -369,10 +379,15 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     aoi_display, _ = _display_footprint(fp.aoi, fp.crs, max(fp.pixel_size_m, 20), settings)
     layers['aoi'] = {'type': 'FeatureCollection', 'features': [spatial.feature(aoi_display, {
         'role': 'study_area', 'area_ha': round(float(ctx['aoi_hectares']), 2)})], 'metadata': {}}
-    buf_geom = hazard.buffer(buffer_m, quad_segs=2).simplify(max(fp.pixel_size_m, 20), preserve_topology=True) \
-        if buffer_m > 0 else hazard
+    if buffer_m > 0:
+        base = zone if zone is not None else hazard.buffer(buffer_m, quad_segs=4)
+        buf_geom = base.simplify(max(fp.pixel_size_m, 20), preserve_topology=True)
+    else:
+        buf_geom = hazard
     layers['buffer'] = {'type': 'FeatureCollection', 'features': [spatial.feature(
         spatial.to_wgs84(buf_geom, fp.crs), {'role': 'proximity_buffer', 'buffer_m': buffer_m})], 'metadata': {}}
+
+    logger.info('exposure_layers seconds=%.1f', time.perf_counter() - stage)
 
     # --- Assemble --------------------------------------------------------------------------------------------------------
     failed = [name for name, s in sources.items() if s['status'] == 'error']

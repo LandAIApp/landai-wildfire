@@ -291,6 +291,13 @@ describe('Dashboard rendering', () => {
     expect(screen.getByTestId('more-detail').contains(screen.getByTestId('facilities-table'))).toBe(false);
   });
 
+  it('draws bar charts with the values as text next to the data tables', async () => {
+    await showExposure(EXPOSURE);
+    expect(screen.getByTestId('buildings-chart').textContent).toMatch(/40 \/ 55/);
+    expect(screen.getByTestId('roads-chart').textContent).toMatch(/4[.,]20 km/);
+    expect(screen.getByTestId('sensitivity-chart').querySelector('.selected')).not.toBeNull();
+  });
+
   it('exports GeoJSON, CSV and the report', async () => {
     const created: Blob[] = [];
     URL.createObjectURL = vi.fn((b: Blob) => { created.push(b); return 'blob:x'; });

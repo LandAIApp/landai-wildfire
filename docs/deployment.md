@@ -118,3 +118,17 @@ GitHub Pages on a **private** repository requires a paid GitHub plan; public rep
   `frontend/public/demo/exposure-demo.json`; the UI labels it "recorded". Nothing ships by default.
 - Cost target (~USD 5/month): scale-to-zero, `--max-instances 3`, no database, no paid APIs; set a budget alert.
 - Frontend deploy is unchanged (GitHub Pages workflow). **Do not deploy from the feature branch before the checklist in `docs/conference-checklist.md`.**
+
+## 7. Cost estimate (Cloud Run, request-based billing)
+
+Prices checked on 2026-10-13 (Tier 1 regions): USD 0.000024 per vCPU-second, 0.00000025 per GiB-second, 0.40 per million requests; free tier per month: 180,000 vCPU-s, 360,000 GiB-s, 2 M requests, 1 GiB egress. Configuration assumed: 1 vCPU, 2 GiB, `--max-instances 3`.
+
+| Study area | Expected duration of one full run (analysis + exposure) | Compute cost per run |
+|---|---|---|
+| ~20,000 ha (measured: 7.7 min before the speed-ups in this version) | 6–8 min | ≈ USD 0.01–0.015 |
+| 50,000–80,000 ha (extrapolated, **not measured**) | 12–20 min | ≈ USD 0.02–0.04 |
+
+* ~1,000 full runs/month at 50–80 k ha ≈ USD 20–40 of compute, minus the free tier (roughly 150–250 runs).
+* Per-IP limits (`RATE_LIMIT_ANALYZE`, `RATE_LIMIT_EXPOSURE`) and `--max-instances 3` bound the worst case; set a Google Cloud budget alert (e.g. USD 5 and USD 20).
+* Compute is not the main risk. Earth Engine quota (Community tier: 150 EECU-hours/month, reduced performance beyond it), public Overpass fair use and the Cloud Run request timeout (`--timeout 1200`) are. Areas above ~40,000 ha should be treated as unvalidated until measured.
+* Overview diagram: `docs/img/architecture-overview.svg` / `.png`.

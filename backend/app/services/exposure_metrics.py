@@ -86,11 +86,13 @@ def _flags(geoms: list[BaseGeometry], hazard, zone) -> tuple[list[bool], list[bo
 
 
 def compute(osm: OsmData, hazard: BaseGeometry, crs: str, *, buffer_m: float,
-            max_layer_features: int = 5000, with_layers: bool = True) -> ExposureMetrics:
+            max_layer_features: int = 5000, with_layers: bool = True,
+            zone: BaseGeometry | None = None) -> ExposureMetrics:
     """Compute all OSM-based indicators for one footprint (all geometries in the metric ``crs``)."""
     out = ExposureMetrics()
     shapely.prepare(hazard)
-    zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard
+    if zone is None:   # callers that already built the proximity zone pass it in (buffering a raw outline is slow)
+        zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard
     shapely.prepare(zone)
 
     # ---- buildings -----------------------------------------------------------------------

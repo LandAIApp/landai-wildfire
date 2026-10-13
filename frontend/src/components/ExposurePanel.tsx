@@ -1,3 +1,4 @@
+import BarChart from './BarChart';
 import { useI18n } from '../i18n/LanguageContext';
 import {
   buildGeoJson, buildReport, displayMetric, displayPopulation, download, exportFileName, sourceState,
@@ -184,6 +185,9 @@ export default function ExposurePanel(p: Props) {
       {res.sensitivity.length > 0 && (
         <>
           <h3>{t('exposure.sens.title')}</h3>
+          <BarChart testId="sensitivity-chart" title={t('exposure.sens.title')}
+            rows={res.sensitivity.map((r) => ({ key: r.key, label: `≥ ${r.threshold.toFixed(2)}`, value: r.area_ha,
+              text: `${formatNumber(r.area_ha, lang)} ha`, highlight: r.selected }))} />
           <div className="table-scroll">
             <table className="results" data-testid="sensitivity">
               <thead><tr>
@@ -300,6 +304,15 @@ function Details({ res, onFocus }: { res: ExposureResponse; onFocus?: Props['onF
             {t('exposure.viewOnMap')} ⌖</button>) : null}
       </h3>
       {d.buildings_by_category ? (
+        <>
+        <BarChart testId="buildings-chart" title={t('exposure.details.buildings')}
+          legend={{ main: t('exposure.col.inside'), total: t('exposure.col.near') }}
+          rows={BUILDING_ORDER.filter((c) => d.buildings_by_category![c]
+            && (d.buildings_by_category![c].within_buffer > 0 || d.buildings_by_category![c].intersecting > 0))
+            .map((c) => ({ key: c, label: tOptional(`exposure.building.${c}`) ?? c,
+              value: d.buildings_by_category![c].intersecting, total: d.buildings_by_category![c].within_buffer,
+              text: `${formatNumber(d.buildings_by_category![c].intersecting, lang)} / ${formatNumber(d.buildings_by_category![c].within_buffer, lang)}` }))} />
+        <details className="table-toggle"><summary>{t('exposure.viewTable')}</summary>
         <table className="results" data-testid="buildings-table">
           <thead><tr><th>{t('exposure.col.category')}</th><th className="num">{t('exposure.col.inside')}</th>
             <th className="num">{t('exposure.col.near')}</th></tr></thead>
@@ -311,11 +324,18 @@ function Details({ res, onFocus }: { res: ExposureResponse; onFocus?: Props['onF
             ))}
           </tbody>
         </table>
+        </details>
+        </>
       ) : <p className="muted">{m.buildings_intersecting.coverage === 'unavailable' ? t('exposure.unavailable') : t('exposure.noOsmData')}</p>}
 
       <h3>{t('exposure.details.roads')}</h3>
       {d.roads_km_by_class ? (
         Object.keys(d.roads_km_by_class).length ? (
+          <>
+          <BarChart testId="roads-chart" title={t('exposure.details.roads')}
+            rows={Object.entries(d.roads_km_by_class).sort((a, b) => b[1] - a[1]).map(([c, km]) => ({
+              key: c, label: tOptional(`exposure.road.${c}`) ?? c, value: km, text: `${formatDecimal(km, lang, 2)} km` }))} />
+          <details className="table-toggle"><summary>{t('exposure.viewTable')}</summary>
           <table className="results" data-testid="roads-table">
             <thead><tr><th>{t('exposure.col.class')}</th><th className="num">{t('exposure.col.km')}</th></tr></thead>
             <tbody>
@@ -324,6 +344,8 @@ function Details({ res, onFocus }: { res: ExposureResponse; onFocus?: Props['onF
               ))}
             </tbody>
           </table>
+          </details>
+          </>
         ) : <p className="muted">0 km</p>
       ) : <p className="muted">{m.roads_km_intersecting.coverage === 'unavailable' ? t('exposure.unavailable') : t('exposure.noOsmData')}</p>}
 

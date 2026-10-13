@@ -398,3 +398,18 @@ table.results tr.highlight td:last-child { border-radius: 0 10px 10px 0; }
 h3 .link-btn { font-size: 12px; font-weight: 500; }
 .more-detail { margin-top: 12px; }
 .more-detail > summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+
+/* Exposure bar charts */
+.bars { display: grid; gap: 6px; margin: 8px 0 10px; }
+.bars-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
+.bars-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.swatch.main, .bar.main { background: var(--accent); }
+.swatch.total, .bar.total { background: rgba(34, 216, 180, 0.28); }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 36%) 1fr auto; align-items: center; gap: 8px; font-size: 12px; }
+.bar-row.selected .bar-label, .bar-row.selected .bar-value { color: var(--accent); font-weight: 700; }
+.bar-label { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { position: relative; display: block; height: 12px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+.bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
+.bar-value { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 52px; text-align: right; }
+.table-toggle { margin: 4px 0 8px; font-size: 12px; }
+.table-toggle > summary { cursor: pointer; color: var(--muted); }
