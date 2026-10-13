@@ -17,6 +17,8 @@ from .core.config import get_settings
 from .core.errors import WildfireError
 from .core.rate_limit import limiter, retry_after_seconds
 
+logging.basicConfig(level=get_settings().log_level.upper(),
+                    format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('landai')
 
 def create_app() -> FastAPI:

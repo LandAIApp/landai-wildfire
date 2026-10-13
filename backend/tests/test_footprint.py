@@ -176,7 +176,7 @@ def test_tiled_extract_stitches_tiles_without_seams(monkeypatch):
 def test_tiled_extract_skips_tiles_outside_known_aoi(monkeypatch):
     from shapely.geometry import box
     plan = footprint.plan_tiles(BOUNDS, CRS, 40)
-    corner = box(plan.x0, plan.y1 - 30 * 20, plan.x0 + 30 * 20, plan.y1)      # inside the first tile only
+    corner = box(plan.x0, plan.y1 - 20 * 20, plan.x0 + 20 * 20, plan.y1)      # inside the first tile only (+ 10 px tolerance)
     fp, _glob, calls = _tiled_extract(monkeypatch, aoi_metric=corner)
     assert len(calls) == 1 and fp.aoi_from_raster is False
 
@@ -184,3 +184,44 @@ def test_tiled_extract_skips_tiles_outside_known_aoi(monkeypatch):
 def test_misaligned_tile_grid_is_an_error(monkeypatch):
     with pytest.raises(FootprintError, match='unexpected pixel grid'):
         _tiled_extract(monkeypatch, shift=7.0)                       # tiles offset by 7 m: not on the 20 m grid
+
+
+def test_tiled_extract_skips_tiles_using_wgs84_outline(monkeypatch):
+    from shapely.geometry import box
+    from app.services import spatial
+    plan = footprint.plan_tiles(BOUNDS, CRS, 40)
+    corner_m = box(plan.x0, plan.y1 - 20 * 20, plan.x0 + 20 * 20, plan.y1)
+    outline = spatial.to_wgs84(corner_m, CRS)
+    captured = {}
+    orig = footprint._fetch_tiles
+
+    def spy(plan_, fetch, names, crs, settings, aoi):
+        captured['aoi'] = aoi
+        return orig(plan_, fetch, names, crs, settings, aoi)
+    monkeypatch.setattr(footprint, '_fetch_tiles', spy)
+    from unittest.mock import MagicMock
+    fake_ee = MagicMock()
+    monkeypatch.setattr(footprint, 'ee', fake_ee)
+    monkeypatch.setattr(footprint, 'ensure_initialized', lambda: None)
+    monkeypatch.setattr(footprint, '_tile_region', lambda *a, **k: 'region')
+    fake_ee.Image.cat.return_value.getDownloadURL.side_effect = lambda params: 'url'
+    calls = []
+
+    def downloader(url, settings):
+        calls.append(url)
+        raise FootprintError('stop here')
+    s = Settings(_env_file=None, exposure_tile_px=40)
+    with pytest.raises(FootprintError, match='stop here'):
+        footprint.extract_from_earth_engine({'burn072': MagicMock()}, MagicMock(), BOUNDS, ['burn072'], s,
+                                            aoi_wgs84=outline, downloader=downloader)
+    assert len(calls) == 1 and captured['aoi'] is not None        # only the tile under the outline was asked for
+
+
+def test_time_budget_stops_the_download(monkeypatch):
+    with pytest.raises(FootprintError, match='time budget'):
+        s = Settings(_env_file=None, exposure_tile_px=40, exposure_max_seconds=0)
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(footprint, 'ee', MagicMock())
+        monkeypatch.setattr(footprint, 'ensure_initialized', lambda: None)
+        footprint.extract_from_earth_engine({'burn072': MagicMock()}, MagicMock(), BOUNDS, ['burn072'], s,
+                                            downloader=lambda *a: b'')

@@ -30,16 +30,16 @@ from shapely.ops import unary_union
 from ..core.config import Settings
 from ..core.earth_engine import ensure_initialized, map_ee_error
 from ..core.errors import ExposureAreaTooLargeError, FootprintError, WildfireError
-from ..wildfire.config import AREA_SCALE, THRESHOLD_SPECS
+from ..wildfire.config import AREA_SCALE, MIN_CONNECTED_PIXELS, THRESHOLD_SPECS
 from . import spatial
 
 logger = logging.getLogger('landai.exposure')
 
 AOI_BAND = 'AOI'
-# postprocessing.py cleans the masks with connectedPixelCount(100, True): a pixel's component size is only
-# determined by pixels within 100 px of it, so every tile is requested with this much margin and cropped back.
-NEIGHBOURHOOD_PX = 100
-TILE_MARGIN_PX = NEIGHBOURHOOD_PX + 4
+# postprocessing.py keeps pixels whose 8-connected component has >= MIN_CONNECTED_PIXELS pixels. Deciding that for a
+# pixel only needs the pixels within MIN_CONNECTED_PIXELS - 1 steps of it, so each tile is requested with twice that
+# margin (12 px = 240 m) and cropped back: components that cross a tile border are measured exactly.
+TILE_MARGIN_PX = 2 * MIN_CONNECTED_PIXELS
 # mask key (burn050) -> (threshold, area key wf050, band name Burn050)
 THRESHOLD_BY_KEY = {key: (t, area_key, band) for t, key, area_key, band in THRESHOLD_SPECS}
 
@@ -211,47 +211,70 @@ def _paste(canvas: dict[str, np.ndarray], arrays: dict[str, np.ndarray], transfo
 
 def _fetch_tiles(plan: TilePlan, fetch, all_names: list[str], crs: str, settings: Settings,
                  aoi_metric: BaseGeometry | None):
-    """Download every tile (a few in parallel) and stitch the cores into one raster on the canvas grid."""
+    """Download every tile and stitch the cores into one raster on the canvas grid.
+
+    The FIRST tile runs alone: Earth Engine caches intermediate results (the trained Random Forest, the
+    composites), so the remaining tiles - run a few in parallel - can reuse them instead of recomputing.
+    Tiles that do not touch the AOI are skipped. A time budget stops scheduling new tiles.
+    """
+    import time
     from concurrent.futures import ThreadPoolExecutor
     from rasterio.transform import from_origin
 
     scale = AREA_SCALE
     canvas = {n: np.zeros((plan.height, plan.width), dtype='uint8') for n in all_names}
+    zone = aoi_metric.buffer(10 * scale) if aoi_metric is not None else None   # boundary is simplified (100 m)
     work = []
     for index, tile in enumerate(plan.tiles):
         c0, c1, r0, r1 = tile
-        if aoi_metric is not None:       # skip tiles that do not touch the (known) AOI
+        if zone is not None:
             box_m = Polygon.from_bounds(plan.x0 + c0 * scale, plan.y1 - r1 * scale,
                                         plan.x0 + c1 * scale, plan.y1 - r0 * scale)
-            if not aoi_metric.intersects(box_m):
+            if not zone.intersects(box_m):
                 continue
         work.append((index, tile))
-    logger.info('footprint_tiles total=%s requested=%s canvas=%sx%s', len(plan.tiles), len(work),
-                plan.width, plan.height)
+    started = time.monotonic()
+    deadline = started + float(settings.exposure_max_seconds)
+    logger.info('footprint_tiles total=%s requested=%s canvas=%sx%s workers=%s', len(plan.tiles), len(work),
+                plan.width, plan.height, settings.exposure_tile_workers)
 
     def run(item):
         index, tile = item
+        if time.monotonic() > deadline:
+            raise FootprintError('The exposure computation exceeded its time budget. Use a smaller area.',
+                                 details={'tile': f'{index + 1}/{len(plan.tiles)}',
+                                          'max_seconds': settings.exposure_max_seconds})
+        t0 = time.monotonic()
         try:
             arrays, transform, tile_crs = fetch({'region': _tile_region(plan, tile, crs)})
         except WildfireError as exc:
             if isinstance(exc.details, dict):
                 exc.details['tile'] = f'{index + 1}/{len(plan.tiles)}'
             raise
+        logger.info('footprint_tile %s/%s done in %.1f s (%.0f s elapsed)', index + 1, len(plan.tiles),
+                    time.monotonic() - t0, time.monotonic() - started)
         return tile, arrays, transform, tile_crs
 
+    def place(result):
+        tile, arrays, transform, tile_crs = result
+        if tile_crs and tile_crs.upper() != crs.upper():
+            raise FootprintError('Earth Engine returned a tile in an unexpected CRS.',
+                                 details={'expected': crs, 'found': tile_crs})
+        _paste(canvas, arrays, transform, plan, tile)
+
+    if work:
+        place(run(work[0]))
     workers = max(1, int(settings.exposure_tile_workers))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for tile, arrays, transform, tile_crs in pool.map(run, work):
-            if tile_crs and tile_crs.upper() != crs.upper():
-                raise FootprintError('Earth Engine returned a tile in an unexpected CRS.',
-                                     details={'expected': crs, 'found': tile_crs})
-            _paste(canvas, arrays, transform, plan, tile)
+        for result in pool.map(run, work[1:]):
+            place(result)
     return canvas, from_origin(plan.x0, plan.y1, scale, scale), crs
 
 
 def extract_from_earth_engine(result: dict, aoi: ee.Geometry, bounds: tuple[float, float, float, float],
                               mask_keys: list[str], settings: Settings,
                               aoi_metric: BaseGeometry | None = None,
+                              aoi_wgs84: BaseGeometry | None = None,
                               downloader=_download) -> Footprint:
     """Rasterise the requested cleaned burn masks (and the AOI) once and vectorise them.
 
@@ -291,7 +314,10 @@ def extract_from_earth_engine(result: dict, aoi: ee.Geometry, bounds: tuple[floa
         region = ee.Geometry.Rectangle([west, south, east, north], None, False)
         arrays, transform, file_crs = fetch({'region': region})
     else:
-        arrays, transform, file_crs = _fetch_tiles(plan, fetch, all_names, crs, settings, aoi_metric)
+        skip_aoi = aoi_metric
+        if skip_aoi is None and aoi_wgs84 is not None:
+            skip_aoi = spatial.to_metric(aoi_wgs84, crs)
+        arrays, transform, file_crs = _fetch_tiles(plan, fetch, all_names, crs, settings, skip_aoi)
     if file_crs and file_crs.upper() != crs.upper():
         # keep the raster's own CRS as the metric CRS (it is projected); never assume
         crs = file_crs

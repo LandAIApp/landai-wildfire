@@ -74,15 +74,21 @@ def _resolve_earth_engine(ctx: dict, mask_keys: list[str], settings: Settings) -
     from ..wildfire.model import run_burn_model
     from . import administrative, aoi as aoi_service
 
+    aoi_wgs84 = None
     if ctx['kind'] == 'drawn':
         drawn = aoi_service.build_drawn(ctx['ring'], ctx['aoi_hectares'])
         geometry, bounds_ll = drawn.geometry, ctx['ring_bounds']
         aoi_metric = None
+        aoi_wgs84 = Polygon(ctx['ring'])
     else:
         collection = administrative.select_municipality(ctx['department'], ctx['municipality'])
         geometry = collection.geometry()
         bounds_ll = None            # read from Earth Engine below (exact extent of the municipal geometry)
         aoi_metric = None
+        try:                         # municipal outline: only used to skip download tiles outside the municipality
+            aoi_wgs84 = shape(administrative.boundary_geojson(collection)['geometry'])
+        except Exception:  # noqa: BLE001 - an optimisation only; fall back to downloading every tile
+            aoi_wgs84 = None
     result = run_burn_model(geometry, ee.Date(ctx['fire_date']), ee.Date(ctx['analysis_end']))
     if bounds_ll is None:
         from ..core.earth_engine import evaluate
@@ -90,7 +96,7 @@ def _resolve_earth_engine(ctx: dict, mask_keys: list[str], settings: Settings) -
         xs, ys = [p[0] for p in ring], [p[1] for p in ring]
         bounds_ll = (min(xs), min(ys), max(xs), max(ys))
     fp = footprint.extract_from_earth_engine(result, geometry, tuple(bounds_ll), mask_keys, settings,
-                                             aoi_metric=aoi_metric)
+                                             aoi_metric=aoi_metric, aoi_wgs84=aoi_wgs84)
     if ctx['kind'] == 'drawn':
         fp.aoi = spatial.to_metric(Polygon(ctx['ring']), fp.crs)    # exact drawn ring, same CRS as raster
         fp.aoi_from_raster = False

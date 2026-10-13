@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     # Earth Engine evaluates a download in memory: big areas are fetched as several tiles of at most this many
     # pixels per side (+ a 104 px margin), a few in parallel. Lower it if EE reports 'User memory limit exceeded'.
     exposure_tile_px: int = Field(640, validation_alias='EXPOSURE_TILE_PX')
-    exposure_tile_workers: int = Field(2, validation_alias='EXPOSURE_TILE_WORKERS')
+    exposure_tile_workers: int = Field(3, validation_alias='EXPOSURE_TILE_WORKERS')
+    # Time budget for the whole footprint download; no new tile is started after it (the client waits 20 min).
+    exposure_max_seconds: int = Field(1000, validation_alias='EXPOSURE_MAX_SECONDS')
     exposure_max_concurrent: int = Field(1, validation_alias='EXPOSURE_MAX_CONCURRENT')
     exposure_max_layer_features: int = Field(5000, validation_alias='EXPOSURE_MAX_LAYER_FEATURES')
     exposure_max_display_vertices: int = Field(60_000, validation_alias='EXPOSURE_MAX_DISPLAY_VERTICES')
