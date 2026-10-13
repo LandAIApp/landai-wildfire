@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 880" width="1600" height="880" font-family="Poppins, 'Segoe UI', Arial, sans-serif">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22d8b4"/></marker>
+<style>
+.bg{fill:#071110}.zone{fill:#0b1a18;stroke:#1f4b44;stroke-width:1.6}
+.box{fill:#10302b;stroke:#22d8b4;stroke-width:1.6}.ext{fill:#121b25;stroke:#5b7a96;stroke-width:1.6}
+.t{fill:#eaf6f3;font-size:19px;font-weight:600}.s{fill:#a7c4be;font-size:15px}.z{fill:#22d8b4;font-size:15px;font-weight:700;letter-spacing:.07em}
+.l{stroke:#22d8b4;stroke-width:2.6;fill:none}.c{fill:#eaf6f3;font-size:13.5px;font-weight:600}
+</style></defs>
+<rect class="bg" width="1600" height="880"/>
+<text x="40" y="54" class="t" style="font-size:30px">Land AI Wildfire Intelligence · System Architecture</text>
+<text x="40" y="82" class="s" style="font-size:16px">Post-fire burned-area mapping and exposure analysis from open satellite and geospatial data</text>
+<rect class="zone" x="40" y="110" width="440" height="656" rx="18"/>
+<text x="62" y="144" class="z">FRONTEND · GITHUB PAGES (STATIC HOSTING)</text>
+<rect class="box" x="62" y="156" width="396" height="100" rx="14"/>
+<text x="82" y="189" class="t">Study area selection</text>
+<text x="82" y="218" class="s">Municipality or drawn polygon</text>
+<text x="82" y="241" class="s">Area limits and validation</text>
+<rect class="box" x="62" y="272" width="396" height="100" rx="14"/>
+<text x="82" y="305" class="t">Interactive map</text>
+<text x="82" y="334" class="s">Leaflet · OpenStreetMap basemap</text>
+<text x="82" y="357" class="s">Burned-area and exposure layers</text>
+<rect class="box" x="62" y="388" width="396" height="100" rx="14"/>
+<text x="82" y="421" class="t">Wildfire results</text>
+<text x="82" y="450" class="s">Burned area by confidence threshold</text>
+<text x="82" y="473" class="s">Sentinel-2 and VIIRS layers</text>
+<rect class="box" x="62" y="504" width="396" height="124" rx="14"/>
+<text x="82" y="537" class="t">Impact &amp; Exposure dashboard</text>
+<text x="82" y="566" class="s">Population · buildings · roads</text>
+<text x="82" y="589" class="s">Health and education services</text>
+<text x="82" y="612" class="s">Charts and tables · English / Spanish</text>
+<rect class="box" x="62" y="644" width="396" height="76" rx="14"/>
+<text x="82" y="677" class="t">Data export</text>
+<text x="82" y="706" class="s">GeoJSON · CSV · JSON report</text>
+<text x="62" y="750" class="s">React · Vite · TypeScript</text>
+<rect class="zone" x="580" y="110" width="440" height="656" rx="18"/>
+<text x="602" y="144" class="z">BACKEND · GOOGLE CLOUD RUN (CONTAINER)</text>
+<rect class="box" x="602" y="156" width="396" height="124" rx="14"/>
+<text x="622" y="189" class="t">API layer</text>
+<text x="622" y="218" class="s">FastAPI · request validation</text>
+<text x="622" y="241" class="s">CORS allowlist · rate limiting</text>
+<text x="622" y="264" class="s">Endpoints: config · wildfire · exposure</text>
+<rect class="box" x="602" y="296" width="396" height="124" rx="14"/>
+<text x="622" y="329" class="t">Wildfire engine</text>
+<text x="622" y="358" class="s">Random Forest burn classifier</text>
+<text x="622" y="381" class="s">Sentinel-2 + VIIRS active fires</text>
+<text x="622" y="404" class="s">Burn probability thresholds</text>
+<rect class="box" x="602" y="436" width="396" height="162" rx="14"/>
+<text x="622" y="469" class="t">Exposure engine</text>
+<text x="622" y="498" class="s">Affected footprint (20 m raster to polygons)</text>
+<text x="622" y="521" class="s">Buildings · roads · health · education</text>
+<text x="622" y="544" class="s">Population estimate</text>
+<text x="622" y="567" class="s">500 m proximity zone</text>
+<text x="622" y="590" class="s">Threshold sensitivity · export files</text>
+<rect class="box" x="602" y="614" width="396" height="100" rx="14"/>
+<text x="622" y="647" class="t">Runtime and secrets</text>
+<text x="622" y="676" class="s">Stateless · in-memory cache · no database</text>
+<text x="622" y="699" class="s">Credentials only in environment variables</text>
+<text x="602" y="750" class="s">Python · serverless, scales to zero</text>
+<rect class="zone" x="1120" y="110" width="440" height="656" rx="18"/>
+<text x="1142" y="144" class="z">EXTERNAL SERVICES (OPEN DATA)</text>
+<rect class="ext" x="1142" y="156" width="396" height="216" rx="14"/>
+<text x="1162" y="189" class="t">Google Earth Engine</text>
+<text x="1162" y="218" class="s">Sentinel-2 imagery · VIIRS active fires</text>
+<text x="1162" y="241" class="s">Administrative boundaries</text>
+<text x="1162" y="264" class="s">Burn classification and burn raster</text>
+<text x="1162" y="287" class="s">Service-account authentication</text>
+<text x="1162" y="310" class="s">Hosted by Google Cloud</text>
+<rect class="ext" x="1142" y="392" width="396" height="100" rx="14"/>
+<text x="1162" y="425" class="t">OpenStreetMap · Overpass API</text>
+<text x="1162" y="454" class="s">Buildings · roads · health · education</text>
+<text x="1162" y="477" class="s">Community-hosted servers with mirrors</text>
+<rect class="ext" x="1142" y="508" width="396" height="100" rx="14"/>
+<text x="1162" y="541" class="t">WorldPop API</text>
+<text x="1162" y="570" class="s">Gridded population, 100 m resolution</text>
+<text x="1162" y="593" class="s">Hosted by WorldPop (Univ. of Southampton)</text>
+<rect class="ext" x="1142" y="624" width="396" height="76" rx="14"/>
+<text x="1162" y="657" class="t">OpenStreetMap tile servers</text>
+<text x="1162" y="686" class="s">Basemap tiles</text>
+<path class="l" d="M458 300 H602" marker-start="url(#a)" marker-end="url(#a)"/><text x="480" y="286" class="c">REST · JSON</text><text x="494" y="324" class="c">HTTPS</text>
+<path class="l" d="M998 316 H1142" marker-end="url(#a)"/><text x="1014" y="304" class="c">EE Python API</text>
+<path class="l" d="M998 450 H1040 V352 H1142" marker-end="url(#a)"/>
+<path class="l" d="M998 480 H1142" marker-end="url(#a)"/><text x="1020" y="468" class="c">Overpass QL</text><text x="1050" y="504" class="c">HTTPS</text>
+<path class="l" d="M998 580 H1142" marker-end="url(#a)"/><text x="1022" y="568" class="c">REST · async</text>
+<path class="l" d="M260 766 V816 H1340 V700" marker-end="url(#a)"/><text x="640" y="806" class="c">Basemap tiles · HTTPS (browser to tile servers)</text>
+<text x="40" y="862" class="s">Open data sources · Stateless backend · No database · Pay-per-use hosting</text></svg>
