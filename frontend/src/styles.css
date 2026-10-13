@@ -392,3 +392,9 @@ table.results tr.highlight td:last-child { border-radius: 0 10px 10px 0; }
   .field-row { grid-template-columns: 1fr; }
 }
 .exposure-panel .button-row { flex-wrap: wrap; } .exposure-panel .button-row .btn { flex: 1; }
+
+/* Exposure: click-to-zoom links and collapsible detail */
+.link-btn { background: none; border: 0; padding: 0; margin-left: 6px; color: var(--accent, #22d8b4); cursor: pointer; font: inherit; text-align: left; text-decoration: underline; }
+h3 .link-btn { font-size: 12px; font-weight: 500; }
+.more-detail { margin-top: 12px; }
+.more-detail > summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }

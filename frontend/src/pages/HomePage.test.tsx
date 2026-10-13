@@ -283,6 +283,14 @@ describe('Dashboard rendering', () => {
     expect(screen.getByTestId('pop-note').textContent).toMatch(/not a census count/);
   });
 
+  it('lists facilities as clickable rows and keeps the heavy tables in a collapsible detail', async () => {
+    await showExposure(EXPOSURE);
+    const row = within(screen.getByTestId('facilities-table')).getByRole('button', { name: /Clínica Central/ });
+    expect(() => fireEvent.click(row)).not.toThrow();
+    expect(screen.getByTestId('more-detail').contains(screen.getByTestId('buildings-table'))).toBe(true);
+    expect(screen.getByTestId('more-detail').contains(screen.getByTestId('facilities-table'))).toBe(false);
+  });
+
   it('exports GeoJSON, CSV and the report', async () => {
     const created: Blob[] = [];
     URL.createObjectURL = vi.fn((b: Blob) => { created.push(b); return 'blob:x'; });

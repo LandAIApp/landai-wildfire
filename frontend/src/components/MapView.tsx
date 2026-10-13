@@ -30,7 +30,11 @@ interface Props {
   // --- Exposure & Impact layers ---
   exposure?: ExposureResponse['layers'] | null;
   exposureVisible?: Record<ExposureLayerName, boolean>;
+  /** Request to zoom to an exposed feature (by OSM id) or to a whole layer; `seq` makes repeated clicks fire again. */
+  focus?: ExposureFocus | null;
 }
+
+export interface ExposureFocus { osm?: string; layer?: ExposureLayerName; seq: number }
 
 const COLORS: Record<AreaLevel, string> = {
   none: '#22d8b4', ok: '#22d8b4', warn: '#f5c451', over: '#ff7b7b', small: '#ff7b7b',
@@ -47,7 +51,8 @@ export default function MapView(props: Props) {
   const tileRefs = useRef<Record<string, L.TileLayer>>({});
   const boundaryRef = useRef<L.GeoJSON | null>(null);
   const aoiGroup = useRef<L.LayerGroup | null>(null);
-  const exposureRefs = useRef<Partial<Record<ExposureLayerName, L.GeoJSON>>>({});
+  const exposureRefs = useRef<Partial<Record<ExposureLayerName, L.FeatureGroup>>>({});
+  const markerByOsm = useRef<Map<string, L.CircleMarker>>(new Map());
   const handlers = useRef(props);
   handlers.current = props;
   const hasResult = layers.length > 0 || !!boundary;
@@ -193,6 +198,7 @@ export default function MapView(props: Props) {
     if (!map) return;
     Object.values(exposureRefs.current).forEach((l) => l?.remove());
     exposureRefs.current = {};
+    markerByOsm.current = new Map();
     const data = props.exposure;
     if (!data) return;
     for (const name of EXPOSURE_ORDER) {
@@ -207,16 +213,39 @@ export default function MapView(props: Props) {
           : name === 'buffer' ? { color, weight: 1.5, dashArray: '5 5', fillColor: color, fillOpacity: 0.05 }
           : name === 'footprint' ? { color, weight: 1.5, fillColor: color, fillOpacity: 0.35 }
           : { color, weight: 1, fillColor: color, fillOpacity: 0.7 },
-        pointToLayer: (_f, latlng) => L.circleMarker(latlng, {
-          pane: 'exposure', radius: 6, color: '#071110', weight: 1.5, fillColor: color, fillOpacity: 1,
-        }),
+        pointToLayer: (f, latlng) => {
+          const marker = L.circleMarker(latlng, {
+            pane: 'exposure', radius: 6, color: '#071110', weight: 1.5, fillColor: color, fillOpacity: 1,
+          });
+          const osm = (f.properties as Record<string, unknown> | null)?.osm;
+          if (typeof osm === 'string') markerByOsm.current.set(osm, marker);
+          return marker;
+        },
         interactive: name !== 'aoi' && name !== 'buffer',
         onEachFeature: (feature, l) => {
           if (name === 'aoi' || name === 'buffer') return;
           l.bindPopup(() => popupFor(name, feature, lang, tOptional), { maxWidth: 280 });
         },
       });
-      exposureRefs.current[name] = layer;
+      // Buildings and facilities can be a few metres wide: add a fixed-size marker at the centre so they stay visible.
+      if (name === 'buildings' || name === 'health' || name === 'education') {
+        const group = L.featureGroup([layer]);
+        layer.eachLayer((child) => {
+          const poly = child as L.Polygon & { feature?: GeoJSON.Feature };
+          if (!poly.getBounds || !poly.feature) return;
+          const marker = L.circleMarker(poly.getBounds().getCenter(), {
+            pane: 'exposure', radius: name === 'buildings' ? 5 : 8, color: '#071110', weight: 1.5,
+            fillColor: color, fillOpacity: 1,
+          });
+          marker.bindPopup(() => popupFor(name, poly.feature as GeoJSON.Feature, lang, tOptional), { maxWidth: 280 });
+          const osm = (poly.feature.properties as Record<string, unknown> | null)?.osm;
+          if (typeof osm === 'string') markerByOsm.current.set(osm, marker);
+          group.addLayer(marker);
+        });
+        exposureRefs.current[name] = group;
+      } else {
+        exposureRefs.current[name] = layer;
+      }
     }
     const footprint = exposureRefs.current.footprint ?? exposureRefs.current.aoi;
     if (footprint) map.fitBounds(footprint.getBounds(), { padding: [40, 40], maxZoom: 15 });
@@ -234,6 +263,26 @@ export default function MapView(props: Props) {
       if (!on && map.hasLayer(layer)) map.removeLayer(layer);
     }
   }, [props.exposure, props.exposureVisible, lang]);
+
+  // Zoom to a feature (or a whole layer) when the user clicks it in the exposure panel.
+  useEffect(() => {
+    const map = mapRef.current;
+    const f = props.focus;
+    if (!map || !f) return;
+    if (f.osm) {
+      const marker = markerByOsm.current.get(f.osm);
+      if (!marker) return;
+      const group = Object.values(exposureRefs.current).find((g) => g?.hasLayer(marker));
+      if (group && !map.hasLayer(group)) group.addTo(map);
+      map.setView(marker.getLatLng(), Math.max(map.getZoom(), 17));
+      marker.openPopup();
+    } else if (f.layer) {
+      const group = exposureRefs.current[f.layer];
+      if (!group) return;
+      if (!map.hasLayer(group)) group.addTo(map);
+      map.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 18 });
+    }
+  }, [props.focus]);
 
   return (
     <>

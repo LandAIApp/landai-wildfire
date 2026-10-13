@@ -5,7 +5,7 @@ import {
 } from '../services/exposure';
 import { formatArea, formatDateTime, formatDecimal, formatKm2, formatNumber } from '../services/format';
 import { describeError } from '../services/issues';
-import type { ExposureMetric, ExposureResponse, SourceKey } from '../types/api';
+import type { ExposureLayerName, ExposureMetric, ExposureResponse, SourceKey } from '../types/api';
 
 interface Props {
   exposure: ExposureResponse | null;
@@ -16,6 +16,8 @@ interface Props {
   demoRecordedAt: string | null;
   canLoadDemo: boolean;
   onLoadDemo: () => void;
+  /** Zoom the map to a feature (OSM id) or to a whole exposure layer. */
+  onFocus?: (target: { osm?: string; layer?: ExposureLayerName }) => void;
 }
 
 const SOURCES: SourceKey[] = ['earth_observation', 'openstreetmap', 'worldpop'];
@@ -177,7 +179,7 @@ export default function ExposurePanel(p: Props) {
         </ul>
       </details>
 
-      <Details res={res} />
+      <Details res={res} onFocus={p.onFocus} />
 
       {res.sensitivity.length > 0 && (
         <>
@@ -256,7 +258,7 @@ function SourceStrip({ res, loading }: { res: ExposureResponse | null; loading: 
   );
 }
 
-function Details({ res }: { res: ExposureResponse }) {
+function Details({ res, onFocus }: { res: ExposureResponse; onFocus?: Props['onFocus'] }) {
   const { lang, t, tOptional } = useI18n();
   const d = res.details;
   const buffer = formatNumber(res.analysis.buffer_m, lang);
@@ -268,7 +270,35 @@ function Details({ res }: { res: ExposureResponse }) {
   const noFacilityData = d.health_facilities == null && d.education_facilities == null;
   return (
     <>
-      <h3>{t('exposure.details.buildings')}</h3>
+      <h3>{t('exposure.details.facilities')}</h3>
+      {noFacilityData ? <p className="muted">{t('exposure.noOsmData')}</p>
+        : facilities.length === 0 ? <p className="muted">{t('exposure.facility.none')}</p> : (
+          <table className="results" data-testid="facilities-table">
+            <thead><tr><th>{t('exposure.col.name')}</th><th>{t('exposure.col.class')}</th>
+              <th className="num">{t('exposure.col.distance')}</th><th>{t('exposure.col.status')}</th></tr></thead>
+            <tbody>
+              {facilities.map((f) => (
+                <tr key={`${f.kind}-${f.osm}`}>
+                  <td>{onFocus && f.osm
+                    ? <button type="button" className="link-btn" onClick={() => onFocus({ osm: f.osm })}
+                              title={t('exposure.viewOnMap')}>{f.name ?? t('exposure.popup.noName')} ⌖</button>
+                    : (f.name ?? t('exposure.popup.noName'))}</td>
+                  <td>{f.kind === 'health' ? t('exposure.card.health') : t('exposure.card.education')} · {f.class}</td>
+                  <td className="num">{formatNumber(f.distance_m, lang)} m</td>
+                  <td>{tOptional(`exposure.facility.${f.status}`) ?? f.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+      <details className="more-detail" data-testid="more-detail">
+        <summary>{t('exposure.details.more')}</summary>
+      <h3>{t('exposure.details.buildings')}
+        {onFocus && res.layers?.buildings?.features?.length ? (
+          <button type="button" className="link-btn" onClick={() => onFocus({ layer: 'buildings' })}>
+            {t('exposure.viewOnMap')} ⌖</button>) : null}
+      </h3>
       {d.buildings_by_category ? (
         <table className="results" data-testid="buildings-table">
           <thead><tr><th>{t('exposure.col.category')}</th><th className="num">{t('exposure.col.inside')}</th>
@@ -297,25 +327,6 @@ function Details({ res }: { res: ExposureResponse }) {
         ) : <p className="muted">0 km</p>
       ) : <p className="muted">{m.roads_km_intersecting.coverage === 'unavailable' ? t('exposure.unavailable') : t('exposure.noOsmData')}</p>}
 
-      <h3>{t('exposure.details.facilities')}</h3>
-      {noFacilityData ? <p className="muted">{t('exposure.noOsmData')}</p>
-        : facilities.length === 0 ? <p className="muted">{t('exposure.facility.none')}</p> : (
-          <table className="results" data-testid="facilities-table">
-            <thead><tr><th>{t('exposure.col.name')}</th><th>{t('exposure.col.class')}</th>
-              <th className="num">{t('exposure.col.distance')}</th><th>{t('exposure.col.status')}</th></tr></thead>
-            <tbody>
-              {facilities.map((f) => (
-                <tr key={`${f.kind}-${f.osm}`}>
-                  <td>{f.name ?? t('exposure.popup.noName')}</td>
-                  <td>{f.kind === 'health' ? t('exposure.card.health') : t('exposure.card.education')} · {f.class}</td>
-                  <td className="num">{formatNumber(f.distance_m, lang)} m</td>
-                  <td>{tOptional(`exposure.facility.${f.status}`) ?? f.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
       <h3>{t('exposure.details.proximity')}</h3>
       {[m.buildings_within_buffer, m.roads_km_within_buffer, m.health_within_buffer, m.education_within_buffer].every((x) => x.value !== null)
         ? <p className="small" data-testid="proximity">{t('exposure.proximity.text', {
@@ -324,6 +335,7 @@ function Details({ res }: { res: ExposureResponse }) {
           health: formatNumber(m.health_within_buffer.value ?? 0, lang),
           education: formatNumber(m.education_within_buffer.value ?? 0, lang) })}</p>
         : <p className="muted">{t('exposure.unavailable')}</p>}
+      </details>
     </>
   );
 }

@@ -6,7 +6,7 @@ import ExposureAction from '../components/ExposureAction';
 import ExposurePanel from '../components/ExposurePanel';
 import Header from '../components/Header';
 import LayerPanel, { type ExposureLayerEntry } from '../components/LayerPanel';
-import MapView, { type DrawTool } from '../components/MapView';
+import MapView, { type DrawTool, type ExposureFocus } from '../components/MapView';
 import Methodology from '../components/Methodology';
 import ResultsPanel from '../components/ResultsPanel';
 import { useI18n } from '../i18n/LanguageContext';
@@ -48,6 +48,11 @@ export default function HomePage() {
   const [exposureLoading, setExposureLoading] = useState(false);
   const [exposureError, setExposureError] = useState<unknown>(null);
   const [exposureVisible, setExposureVisible] = useState<Record<ExposureLayerName, boolean>>(DEFAULT_EXPOSURE_VISIBLE);
+  const [focus, setFocus] = useState<ExposureFocus | null>(null);
+  const onFocus = (target: { osm?: string; layer?: ExposureLayerName }) => {
+    setFocus((f) => ({ ...target, seq: (f?.seq ?? 0) + 1 }));
+    document.getElementById('map-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  };
   const [demo, setDemo] = useState<RecordedDemo | null>(null);
   const [demoActive, setDemoActive] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
@@ -337,7 +342,7 @@ export default function HomePage() {
             <ExposurePanel
               exposure={exposure} loading={exposureLoading} error={exposureError} apiBase={API_BASE}
               demoRecordedAt={demoActive && demo ? demo.recorded_at : null}
-              canLoadDemo={!!demo} onLoadDemo={onLoadDemo}
+              canLoadDemo={!!demo} onLoadDemo={onLoadDemo} onFocus={onFocus}
             />
           )}
         </aside>
@@ -350,7 +355,7 @@ export default function HomePage() {
             limitChip={mode === 'draw' ? t('map.limitChip', { max: formatNumber(limits.max, lang) }) : undefined}
             onPoint={onPoint} onFinish={onFinish}
             onRingChange={(r) => { setRing(r); invalidate(); }}
-            exposure={exposure?.layers ?? null} exposureVisible={exposureVisible}
+            exposure={exposure?.layers ?? null} exposureVisible={exposureVisible} focus={focus}
           />
           {mode === 'draw' && !result && (
             <DrawBar
