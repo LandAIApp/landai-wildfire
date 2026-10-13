@@ -2,13 +2,15 @@
 
 Query strategy: one bounding-box query for buildings, roads, health and education features, preceded by a
 cheap ``out count`` query that rejects over-large requests BEFORE downloading them. The exact AOI and the
-hazard footprint are applied locally (see exposure_metrics.py). No retries on 429/5xx: public Overpass
-instances are shared and must not be hammered.
+hazard footprint are applied locally (see exposure_metrics.py). A failing public instance (429/5xx/timeout) is
+never retried; the same query is tried ONCE on each configured fallback mirror (OVERPASS_FALLBACK_ENDPOINTS), with
+a pause between servers, so a busy instance does not make the whole exposure analysis partial.
 """
 from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -77,9 +79,9 @@ def build_queries(bounds: tuple[float, float, float, float], settings: Settings)
     return count, data
 
 
-def _post(client: httpx.Client, settings: Settings, query: str) -> dict:
+def _post(client: httpx.Client, settings: Settings, query: str, endpoint: str | None = None) -> dict:
     try:
-        response = client.post(settings.overpass_endpoint, data={'data': query})
+        response = client.post(endpoint or settings.overpass_endpoint, data={'data': query})
     except httpx.TimeoutException as exc:
         raise ExternalSourceError('OpenStreetMap (Overpass) timed out.', code='osm_timeout',
                                   status_code=504) from exc
@@ -213,19 +215,38 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
         return cached
     count_query, data_query = build_queries(bounds, settings)
     headers = {'User-Agent': settings.overpass_user_agent, 'Accept': 'application/json'}
+    endpoints = [settings.overpass_endpoint] + [
+        e.strip() for e in settings.overpass_fallback_endpoints.split(',')
+        if e.strip() and e.strip() != settings.overpass_endpoint]
+    payload: dict = {}
+    used = endpoints[0]
+    last_error: ExternalSourceError | None = None
     with slot('overpass', settings.overpass_max_concurrent, wait_seconds=20,
               busy_message='Another OpenStreetMap query is running. Please retry in a moment.'):
-        with httpx.Client(headers=headers, timeout=settings.overpass_http_timeout_s,
-                          transport=transport) as client:
-            counted = _post(client, settings, count_query)
-            total = _total_from_count(counted)
-            if total is not None and total > settings.overpass_max_elements:
-                raise ExternalSourceError(
-                    f'The area contains about {total:,} OpenStreetMap elements, above the limit of '
-                    f'{settings.overpass_max_elements:,}. Draw a smaller area.',
-                    code='osm_too_many_elements', status_code=422,
-                    details={'elements': total, 'limit': settings.overpass_max_elements})
-            payload = _post(client, settings, data_query)
+        for attempt, endpoint in enumerate(endpoints):
+            if attempt:
+                time.sleep(settings.overpass_fallback_pause_s)
+            try:
+                with httpx.Client(headers=headers, timeout=settings.overpass_http_timeout_s,
+                                  transport=transport) as client:
+                    counted = _post(client, settings, count_query, endpoint)
+                    total = _total_from_count(counted)
+                    if total is not None and total > settings.overpass_max_elements:
+                        raise ExternalSourceError(
+                            f'The area contains about {total:,} OpenStreetMap elements, above the limit of '
+                            f'{settings.overpass_max_elements:,}. Draw a smaller area.',
+                            code='osm_too_many_elements', status_code=422,
+                            details={'elements': total, 'limit': settings.overpass_max_elements})
+                    payload = _post(client, settings, data_query, endpoint)
+                used = endpoint
+                break
+            except ExternalSourceError as exc:
+                if exc.code not in ('osm_timeout', 'osm_unavailable', 'osm_rate_limited'):
+                    raise                      # a size/limit problem is the same on every mirror
+                logger.warning('overpass_endpoint_failed endpoint=%s code=%s', endpoint, exc.code)
+                last_error = exc
+        else:
+            raise last_error  # type: ignore[misc]
     elements = payload.get('elements', [])
     if len(elements) > settings.overpass_max_elements:
         raise ExternalSourceError('Too many OpenStreetMap elements returned. Draw a smaller area.',
@@ -233,7 +254,7 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
                                   details={'elements': len(elements), 'limit': settings.overpass_max_elements})
     data = parse_elements(elements)
     data.retrieved_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    data.endpoint = settings.overpass_endpoint
+    data.endpoint = used
     data.bbox = tuple(bounds)  # type: ignore[assignment]
     _cache.set(cache_key, data, settings.overpass_cache_ttl_seconds)
     return data

@@ -31,7 +31,7 @@ Large areas are downloaded as tiles (`EXPOSURE_TILE_PX`, default 640 px + 12 px 
 
 ## 4. OpenStreetMap (Overpass)
 POST with bbox, `out count` pre-check against `OVERPASS_MAX_ELEMENTS`, `out tags geom`, descriptive User-Agent,
-no rapid retries (429/5xx → source error), local exact intersection with shapely. Tag sets: `building=*`;
+no retry on the same server; on 429/5xx/timeout the query is tried once on each mirror in `OVERPASS_FALLBACK_ENDPOINTS` (2 s pause), then the source is reported as an error, local exact intersection with shapely. Tag sets: `building=*`;
 `highway=*` (motorway…track, `_link` merged into parent class); `amenity=hospital|clinic|doctors`, `healthcare=*`;
 `amenity=school|kindergarten|college|university`. Relations are skipped and counted (warning `osm_relations_skipped`).
 Roads: length of the union of geometries clipped to the footprint (no double counting). Facilities: a node inside a

@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # OpenStreetMap / Overpass
     overpass_endpoint: str = Field('https://overpass-api.de/api/interpreter',
                                    validation_alias='OVERPASS_ENDPOINT')
+    # Tried once each, in order, when the main instance answers 429/5xx/timeout (public, shared servers).
+    overpass_fallback_endpoints: str = Field(
+        'https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter',
+        validation_alias='OVERPASS_FALLBACK_ENDPOINTS')
+    overpass_fallback_pause_s: float = Field(2.0, validation_alias='OVERPASS_FALLBACK_PAUSE_S')
     overpass_user_agent: str = Field(
         'LandAI-Wildfire-Intelligence/2.0 (+https://github.com/LandAIApp/landai-wildfire)',
         validation_alias='OVERPASS_USER_AGENT')

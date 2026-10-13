@@ -88,8 +88,8 @@ def test_fetch_http_errors_map_to_codes_without_retry(status, code):
         return httpx.Response(status)
 
     with pytest.raises(ExternalSourceError) as exc:
-        osm.fetch(BOUNDS, settings(), transport=transport(handler))
-    assert exc.value.code == code and len(calls) == 1        # never retried
+        osm.fetch(BOUNDS, settings(overpass_fallback_endpoints=''), transport=transport(handler))
+    assert exc.value.code == code and len(calls) == 1        # a single instance is never retried
 
 
 def test_fetch_timeout():
@@ -134,3 +134,52 @@ def test_relation_multipolygon_is_assembled():
            'members': [{'type': 'way', 'role': 'outer', 'geometry': outer}]}
     data = osm.parse_elements([rel])
     assert len(data.buildings) == 1 and data.buildings[0].geom.geom_type == 'Polygon'
+
+
+def test_fallback_mirror_is_tried_once_when_the_main_instance_fails():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        if request.url.host == 'overpass-api.de':
+            return httpx.Response(504)
+        body = request.content.decode()
+        if 'out+count' in body or 'out%20count' in body or 'out count' in body:
+            return httpx.Response(200, json={'elements': [{'type': 'count', 'tags': {'total': '1'}}]})
+        return httpx.Response(200, json={'elements': []})
+
+    s = settings(overpass_fallback_endpoints='https://mirror.example.org/api/interpreter',
+                 overpass_fallback_pause_s=0)
+    data = osm.fetch(BOUNDS, s, transport=transport(handler))
+    assert hosts[0] == 'overpass-api.de' and hosts.count('overpass-api.de') == 1     # main: asked once, no retry
+    assert 'mirror.example.org' in hosts and data.endpoint == 'https://mirror.example.org/api/interpreter'
+
+
+def test_all_instances_failing_reports_the_error():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        return httpx.Response(504)
+
+    s = settings(overpass_fallback_endpoints='https://m1.example.org/x,https://m2.example.org/x',
+                 overpass_fallback_pause_s=0)
+    with pytest.raises(ExternalSourceError) as exc:
+        osm.fetch(BOUNDS, s, transport=transport(handler))
+    assert exc.value.code == 'osm_timeout' and hosts == ['overpass-api.de', 'm1.example.org', 'm2.example.org']
+
+
+def test_size_limit_is_not_retried_on_mirrors():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        return httpx.Response(200, json={'elements': [{'type': 'count', 'tags': {'total': '999999999'}}]})
+
+    s = settings(overpass_fallback_endpoints='https://m1.example.org/x', overpass_fallback_pause_s=0)
+    with pytest.raises(ExternalSourceError) as exc:
+        osm.fetch(BOUNDS, s, transport=transport(handler))
+    assert exc.value.code == 'osm_too_many_elements' and hosts == ['overpass-api.de']
