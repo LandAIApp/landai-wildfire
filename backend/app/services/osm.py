@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import polygonize, unary_union
 from shapely.validation import make_valid
@@ -58,6 +59,7 @@ class OsmData:
     skipped_relations: int = 0
     skipped_other: int = 0
     from_cache: bool = False
+    cells: int = 1
 
 
 def _union_clauses(bbox: str) -> str:
@@ -205,49 +207,103 @@ def parse_elements(elements: list[dict]) -> OsmData:
     return data
 
 
-def fetch(bounds: tuple[float, float, float, float], settings: Settings,
-          transport: httpx.BaseTransport | None = None) -> OsmData:
-    """Retrieve OSM data for a bbox (west, south, east, north). Cached for equivalent queries."""
-    cache_key = (settings.overpass_endpoint, tuple(round(v, 4) for v in bounds))
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        cached.from_cache = True
-        return cached
+def plan_cells(bounds: tuple[float, float, float, float], settings: Settings,
+               region: BaseGeometry | None = None) -> list[tuple[float, float, float, float]]:
+    """Split a bbox into ~``overpass_cell_km`` cells (west, south, east, north); [bounds] when it is small.
+
+    A big query ({building, highway, ...} over a whole municipality-sized bbox) makes public Overpass servers
+    answer 504 / time out, while many small ones are quick. ``region`` (WGS84, e.g. the buffered footprint)
+    drops the cells that cannot contain anything relevant.
+    """
+    west, south, east, north = bounds
+    lat_mid = (south + north) / 2
+    dlat = settings.overpass_cell_km / 111.32
+    dlon = settings.overpass_cell_km / (111.32 * max(math.cos(math.radians(lat_mid)), 0.2))
+    if (east - west) <= dlon * 1.5 and (north - south) <= dlat * 1.5:
+        return [bounds]
+    nx = max(1, math.ceil((east - west) / dlon))
+    ny = max(1, math.ceil((north - south) / dlat))
+    wx, wy = (east - west) / nx, (north - south) / ny
+    cells = []
+    for j in range(ny):
+        for i in range(nx):
+            cell = (west + i * wx, south + j * wy, west + (i + 1) * wx, south + (j + 1) * wy)
+            if region is None or region.intersects(box(*cell)):
+                cells.append(cell)
+    return cells
+
+
+def _query_bbox(client_factory, settings: Settings, bounds, endpoints: list[str], with_count: bool):
+    """Run one bbox query, trying each endpoint ONCE in order. Returns (elements, endpoint_used)."""
     count_query, data_query = build_queries(bounds, settings)
-    headers = {'User-Agent': settings.overpass_user_agent, 'Accept': 'application/json'}
-    endpoints = [settings.overpass_endpoint] + [
-        e.strip() for e in settings.overpass_fallback_endpoints.split(',')
-        if e.strip() and e.strip() != settings.overpass_endpoint]
-    payload: dict = {}
-    used = endpoints[0]
     last_error: ExternalSourceError | None = None
-    with slot('overpass', settings.overpass_max_concurrent, wait_seconds=20,
-              busy_message='Another OpenStreetMap query is running. Please retry in a moment.'):
-        for attempt, endpoint in enumerate(endpoints):
-            if attempt:
-                time.sleep(settings.overpass_fallback_pause_s)
-            try:
-                with httpx.Client(headers=headers, timeout=settings.overpass_http_timeout_s,
-                                  transport=transport) as client:
-                    counted = _post(client, settings, count_query, endpoint)
-                    total = _total_from_count(counted)
+    for attempt, endpoint in enumerate(endpoints):
+        if attempt:
+            time.sleep(settings.overpass_fallback_pause_s)
+        try:
+            with client_factory() as client:
+                if with_count:
+                    total = _total_from_count(_post(client, settings, count_query, endpoint))
                     if total is not None and total > settings.overpass_max_elements:
                         raise ExternalSourceError(
                             f'The area contains about {total:,} OpenStreetMap elements, above the limit of '
                             f'{settings.overpass_max_elements:,}. Draw a smaller area.',
                             code='osm_too_many_elements', status_code=422,
                             details={'elements': total, 'limit': settings.overpass_max_elements})
-                    payload = _post(client, settings, data_query, endpoint)
+                payload = _post(client, settings, data_query, endpoint)
+            return payload.get('elements', []), endpoint
+        except ExternalSourceError as exc:
+            if exc.code not in ('osm_timeout', 'osm_unavailable', 'osm_rate_limited'):
+                raise                      # a size/limit problem is the same on every mirror
+            logger.warning('overpass_endpoint_failed endpoint=%s code=%s', endpoint, exc.code)
+            last_error = exc
+    raise last_error  # type: ignore[misc]
+
+
+def fetch(bounds: tuple[float, float, float, float], settings: Settings,
+          transport: httpx.BaseTransport | None = None, region: BaseGeometry | None = None) -> OsmData:
+    """Retrieve OSM data for a bbox (west, south, east, north), in small cells when the bbox is large.
+
+    Results are cached per cell. ``region`` (optional, WGS84) limits the cells to those touching it.
+    """
+    cells = plan_cells(bounds, settings, region)
+    if len(cells) > settings.overpass_max_cells:
+        raise ExternalSourceError(
+            f'The area needs {len(cells)} OpenStreetMap requests, above the limit of {settings.overpass_max_cells}. '
+            'Use a smaller area.', code='osm_too_many_elements', status_code=422,
+            details={'cells': len(cells), 'limit': settings.overpass_max_cells})
+    single = len(cells) == 1
+    headers = {'User-Agent': settings.overpass_user_agent, 'Accept': 'application/json'}
+    endpoints = [settings.overpass_endpoint] + [
+        e.strip() for e in settings.overpass_fallback_endpoints.split(',')
+        if e.strip() and e.strip() != settings.overpass_endpoint]
+
+    def client_factory():
+        return httpx.Client(headers=headers, timeout=settings.overpass_http_timeout_s, transport=transport)
+
+    elements: list[dict] = []
+    used = endpoints[0]
+    from_cache = True
+    with slot('overpass', settings.overpass_max_concurrent, wait_seconds=20,
+              busy_message='Another OpenStreetMap query is running. Please retry in a moment.'):
+        for index, cell in enumerate(cells):
+            cache_key = ('cell', tuple(round(v, 5) for v in cell))
+            cached = _cache.get(cache_key)
+            if cached is not None:
+                elements.extend(cached)
+                continue
+            from_cache = False
+            if index:
+                time.sleep(settings.overpass_cell_pause_s)
+            cell_elements, endpoint = _query_bbox(client_factory, settings, cell, endpoints, with_count=single)
+            if endpoint != used:                        # keep using the server that last answered
+                endpoints = [endpoint] + [e for e in endpoints if e != endpoint]
                 used = endpoint
+            _cache.set(cache_key, cell_elements, settings.overpass_cache_ttl_seconds)
+            elements.extend(cell_elements)
+            if len(elements) > settings.overpass_max_elements:
                 break
-            except ExternalSourceError as exc:
-                if exc.code not in ('osm_timeout', 'osm_unavailable', 'osm_rate_limited'):
-                    raise                      # a size/limit problem is the same on every mirror
-                logger.warning('overpass_endpoint_failed endpoint=%s code=%s', endpoint, exc.code)
-                last_error = exc
-        else:
-            raise last_error  # type: ignore[misc]
-    elements = payload.get('elements', [])
+            logger.info('overpass_cell %s/%s elements=%s', index + 1, len(cells), len(cell_elements))
     if len(elements) > settings.overpass_max_elements:
         raise ExternalSourceError('Too many OpenStreetMap elements returned. Draw a smaller area.',
                                   code='osm_too_many_elements', status_code=422,
@@ -256,7 +312,8 @@ def fetch(bounds: tuple[float, float, float, float], settings: Settings,
     data.retrieved_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
     data.endpoint = used
     data.bbox = tuple(bounds)  # type: ignore[assignment]
-    _cache.set(cache_key, data, settings.overpass_cache_ttl_seconds)
+    data.from_cache = from_cache
+    data.cells = len(cells)
     return data
 
 

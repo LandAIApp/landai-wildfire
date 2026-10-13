@@ -206,7 +206,7 @@ def test_request_modes_are_exclusive():
 def api(monkeypatch):
     reset_gates()
     monkeypatch.setattr(exposure, '_resolve_earth_engine', lambda c, keys, s: fp_with(tuple(keys)))
-    monkeypatch.setattr(exposure.osm, 'fetch', lambda b, s, transport=None: osm_data())
+    monkeypatch.setattr(exposure.osm, 'fetch', lambda b, s, transport=None, region=None: osm_data())
     monkeypatch.setattr(exposure.worldpop, 'estimate', pop)
     return TestClient(create_app(), raise_server_exceptions=False)
 

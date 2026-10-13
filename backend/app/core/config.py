@@ -74,6 +74,10 @@ class Settings(BaseSettings):
         'https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter',
         validation_alias='OVERPASS_FALLBACK_ENDPOINTS')
     overpass_fallback_pause_s: float = Field(2.0, validation_alias='OVERPASS_FALLBACK_PAUSE_S')
+    # Big bboxes are fetched as ~this-size cells: one huge query makes public servers answer 504.
+    overpass_cell_km: float = Field(3.0, validation_alias='OVERPASS_CELL_KM')
+    overpass_cell_pause_s: float = Field(1.0, validation_alias='OVERPASS_CELL_PAUSE_S')
+    overpass_max_cells: int = Field(80, validation_alias='OVERPASS_MAX_CELLS')
     overpass_user_agent: str = Field(
         'LandAI-Wildfire-Intelligence/2.0 (+https://github.com/LandAIApp/landai-wildfire)',
         validation_alias='OVERPASS_USER_AGENT')

@@ -183,3 +183,74 @@ def test_size_limit_is_not_retried_on_mirrors():
     with pytest.raises(ExternalSourceError) as exc:
         osm.fetch(BOUNDS, s, transport=transport(handler))
     assert exc.value.code == 'osm_too_many_elements' and hosts == ['overpass-api.de']
+
+
+# ---- cells: one huge bbox query makes public Overpass servers time out ------------------------------------
+BIG = (-74.10, 4.50, -74.00, 4.60)           # ~11 km square
+
+
+def _elements_handler(hosts=None, fail_hosts=()):
+    def handler(request):
+        if hosts is not None:
+            hosts.append(request.url.host)
+        if request.url.host in fail_hosts:
+            return httpx.Response(504)
+        body = request.content.decode()
+        # one way per cell, shared ways (same id) when the cell contains the bbox center column
+        import re
+        m = re.search(r'\((-?\d+\.\d+),(-?\d+\.\d+),(-?\d+\.\d+),(-?\d+\.\d+)\)', body.replace('%2C', ','))
+        s_, w_ = (float(m.group(1)), float(m.group(2))) if m else (0.0, 0.0)
+        return httpx.Response(200, json={'elements': [
+            {'type': 'way', 'id': int(abs(s_ * 1000)) * 1000 + int(abs(w_ * 1000)), 'tags': {'building': 'yes'},
+             'geometry': [{'lat': s_ + 0.001, 'lon': w_ + 0.001}, {'lat': s_ + 0.001, 'lon': w_ + 0.002},
+                          {'lat': s_ + 0.002, 'lon': w_ + 0.002}, {'lat': s_ + 0.001, 'lon': w_ + 0.001}]},
+            {'type': 'way', 'id': 777, 'tags': {'building': 'yes'},          # same way returned by every cell
+             'geometry': [{'lat': 4.55, 'lon': -74.05}, {'lat': 4.55, 'lon': -74.0499},
+                          {'lat': 4.5501, 'lon': -74.0499}, {'lat': 4.55, 'lon': -74.05}]}]})
+    return handler
+
+
+def test_plan_cells_small_bbox_is_a_single_query_and_big_is_split():
+    s = settings()
+    assert osm.plan_cells(BOUNDS, s) == [BOUNDS]
+    cells = osm.plan_cells(BIG, s)
+    assert len(cells) >= 9 and all(c[0] >= BIG[0] and c[2] <= BIG[2] for c in cells)
+
+
+def test_plan_cells_drops_cells_outside_the_region():
+    from shapely.geometry import box
+    s = settings()
+    allc = osm.plan_cells(BIG, s)
+    some = osm.plan_cells(BIG, s, region=box(-74.10, 4.50, -74.07, 4.53))
+    assert 0 < len(some) < len(allc)
+
+
+def test_fetch_in_cells_merges_dedupes_and_caches_per_cell():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+    s = settings(overpass_cell_pause_s=0, overpass_fallback_pause_s=0)
+    data = osm.fetch(BIG, s, transport=transport(_elements_handler(hosts)))
+    n_cells = len(osm.plan_cells(BIG, s))
+    assert data.cells == n_cells and len(hosts) == n_cells            # one data query per cell (no count query)
+    assert len([f for f in data.buildings if f.key == ('way', 777)]) == 1   # way seen in every cell: counted once
+    again = osm.fetch(BIG, s, transport=transport(_elements_handler(hosts)))
+    assert len(hosts) == n_cells and again.from_cache                 # second run: served from the cell cache
+
+
+def test_fetch_in_cells_keeps_using_the_mirror_that_answered():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+    s = settings(overpass_cell_pause_s=0, overpass_fallback_pause_s=0,
+                 overpass_fallback_endpoints='https://mirror.example.org/api/interpreter')
+    osm.fetch(BIG, s, transport=transport(_elements_handler(hosts, fail_hosts=('overpass-api.de',))))
+    assert hosts.count('overpass-api.de') == 1                        # the dead main server is asked once, not per cell
+    assert hosts.count('mirror.example.org') == len(osm.plan_cells(BIG, s))
+
+
+def test_too_many_cells_is_rejected_before_any_request():
+    osm.clear_cache(); reset_gates()
+    hosts = []
+    s = settings(overpass_max_cells=3)
+    with pytest.raises(ExternalSourceError) as exc:
+        osm.fetch(BIG, s, transport=transport(_elements_handler(hosts)))
+    assert exc.value.code == 'osm_too_many_elements' and not hosts

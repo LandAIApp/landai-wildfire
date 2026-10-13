@@ -212,6 +212,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
                    extra_warnings: list[dict] | None = None,
                    osm_fetch: Callable[..., osm.OsmData] | None = None,
                    pop_estimate: Callable[..., worldpop.PopulationResult] | None = None) -> dict:
+    default_osm = osm_fetch is None
     osm_fetch = osm_fetch or osm.fetch                 # resolved at call time (patchable in tests)
     pop_estimate = pop_estimate or worldpop.estimate
     sel_key, area_key = threshold_key(req.threshold) if ctx['mode'] == 'wildfire_analysis' else ('user', '')
@@ -230,6 +231,8 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     largest = max(fp.footprints.values(), key=lambda g: g.area)
     query_geom = spatial.to_wgs84(box(*largest.buffer(buffer_m + 50, quad_segs=1).bounds), fp.crs)
     bounds = query_geom.bounds
+    # cells that cannot touch the (buffered) footprint are not requested from Overpass
+    osm_region = spatial.to_wgs84(largest.buffer(buffer_m + 50, quad_segs=1), fp.crs)
 
     started = time.perf_counter()
     osm_result: dict[str, Any] = {}
@@ -237,7 +240,8 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
 
     def run_osm():
         try:
-            osm_result['data'] = osm_fetch(bounds, settings)
+            osm_result['data'] = (osm_fetch(bounds, settings, region=osm_region) if default_osm
+                                  else osm_fetch(bounds, settings))
         except Exception as exc:  # noqa: BLE001
             osm_result['error'] = _source_error(exc, 'openstreetmap')
 
