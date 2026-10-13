@@ -21,7 +21,9 @@ export default function ResultsPanel({ result }: { result: AnalyzeResponse | nul
       {result && (
         <>
           <p className="muted small">
-            {result.metadata.municipality}, {result.metadata.department} ·{' '}
+            {result.metadata.aoi_kind === 'drawn'
+              ? t('results.drawnArea')
+              : `${result.metadata.municipality}, ${result.metadata.department}`} ·{' '}
             {result.metadata.fire_date} → {result.metadata.analysis_end}
           </p>
           <div className="headline-results">

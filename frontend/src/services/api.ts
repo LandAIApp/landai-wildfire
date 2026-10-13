@@ -1,5 +1,6 @@
 import type {
-  AnalyzeResponse, ApiErrorBody, PreflightResponse, WildfireRequest,
+  AnalyzeResponse, ApiErrorBody, ExposureRequest, ExposureResponse, PreflightResponse, PublicConfig,
+  RecordedDemo, WildfireRequest,
 } from '../types/api';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000';
@@ -50,6 +51,20 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const api = {
+  config: () => request<PublicConfig>('/api/v1/config', undefined, 20_000),
+  /** Exposure & Impact (explicit user action). Re-runs the validated graph server-side: allow minutes. */
+  exposure: (body: ExposureRequest) =>
+    request<ExposureResponse>('/api/v1/exposure/analyze', json(body), 20 * 60_000),
+  /** Optional recorded demo shipped with the static site (absent unless recorded). */
+  recordedDemo: async (): Promise<RecordedDemo | null> => {
+    const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
+    try {
+      const res = await fetch(`${base}demo/exposure-demo.json`, { cache: 'no-cache' });
+      if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
+      const data = (await res.json()) as RecordedDemo;
+      return data?.recorded === true && data.recorded_from_live_services === true ? data : null;
+    } catch { return null; }
+  },
   departments: () =>
     request<{ departments: string[] }>('/api/v1/administrative/departments', undefined, 120_000),
   municipalities: (department: string) =>

@@ -118,6 +118,7 @@ describe('ControlPanel', () => {
   it('exposes the example button and localized controls', async () => {
     const { LanguageProvider, ControlPanel } = await load();
     const props = {
+      mode: 'municipality' as const, areaSlot: null, areaReady: true, maxHectares: 500000, onMode: () => undefined,
       departments: ['Tolima'], municipalities: ['San Luis'], department: 'Tolima', municipality: 'San Luis',
       fireDate: '2026-08-05', endDate: '2026-08-15', minDate: '2018-08-01', maxDate: '2026-12-31',
       busy: null, elapsed: 0, status: { kind: 'idle' as const, text: 'ok' }, preflight: null,

@@ -1,12 +1,21 @@
 import { useI18n } from '../i18n/LanguageContext';
+import type { ReactNode } from 'react';
 import { describeIssue } from '../services/issues';
 import type { PreflightResponse } from '../types/api';
 
 export type Busy = 'catalog' | 'preflight' | 'analysis' | null;
 export type StatusKind = 'idle' | 'info' | 'success' | 'warning' | 'error';
 export interface Status { kind: StatusKind; text: string }
+export type AreaMode = 'municipality' | 'draw';
 
 interface Props {
+  mode: AreaMode;
+  /** Area meter / drawing tools (rendered by the page). */
+  areaSlot: ReactNode;
+  /** True when the study area is valid (municipality chosen, or a valid drawn polygon). */
+  areaReady: boolean;
+  maxHectares: number;
+  onMode: (m: AreaMode) => void;
   departments: string[];
   municipalities: string[];
   department: string;
@@ -34,9 +43,9 @@ const fmt = (n: number | null) => (n === null ? '—' : String(n));
 export default function ControlPanel(p: Props) {
   const { lang, t } = useI18n();
   const disabled = p.busy !== null;
-  const ready = !!p.department && !!p.municipality && !!p.fireDate && !!p.endDate;
+  const ready = p.areaReady && !!p.fireDate && !!p.endDate;
   const datesOk = !p.fireDate || !p.endDate || p.endDate >= p.fireDate;
-  const issueCtx = { department: p.department, municipality: p.municipality, aoiHectares: p.preflight?.aoi_hectares };
+  const issueCtx = { department: p.department, municipality: p.municipality, aoiHectares: p.preflight?.aoi_hectares, maxHectares: p.maxHectares };
 
   return (
     <section className="card">
@@ -50,6 +59,17 @@ export default function ControlPanel(p: Props) {
         {t('controls.exampleNote')}
       </div>
 
+      <div className="segmented" role="tablist" aria-label={t('controls.areaTitle')}>
+        {(['municipality', 'draw'] as const).map((m) => (
+          <button key={m} type="button" role="tab" aria-selected={p.mode === m}
+                  className={p.mode === m ? 'active' : ''} disabled={disabled} onClick={() => p.onMode(m)}>
+            {t(`controls.mode.${m}` as 'controls.mode.draw')}
+          </button>
+        ))}
+      </div>
+
+      {p.mode === 'municipality' && (
+        <>
       <label htmlFor="department">{t('controls.department')}</label>
       <select id="department" value={p.department} disabled={disabled || p.departments.length === 0}
               onChange={(e) => p.onDepartment(e.target.value)}>
@@ -65,6 +85,10 @@ export default function ControlPanel(p: Props) {
         <option value="">{t('controls.selectMunicipality')}</option>
         {p.municipalities.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
+        </>
+      )}
+
+      {p.areaSlot}
 
       <label htmlFor="fire-date">{t('controls.fireDate')}</label>
       <input id="fire-date" type="date" value={p.fireDate} min={p.minDate} max={p.maxDate} disabled={disabled}

@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useI18n } from '../i18n/LanguageContext';
 import { layerDescription, layerLabel, splitLayers } from '../services/layers';
-import type { LayerInfo, Legend } from '../types/api';
+import { LAYER_COLORS } from '../services/exposure';
+import type { ExposureLayerName, LayerInfo, Legend } from '../types/api';
+
+export interface ExposureLayerEntry { name: ExposureLayerName; total: number; shown: number }
 
 interface Props {
   layers: LayerInfo[];
@@ -9,6 +12,10 @@ interface Props {
   opacity: Record<string, number>;
   onToggle: (id: string) => void;
   onOpacity: (id: string, value: number) => void;
+  /** Exposure & Impact layers (present after an exposure analysis). */
+  exposureLayers?: ExposureLayerEntry[];
+  exposureVisible?: Record<ExposureLayerName, boolean>;
+  onExposureToggle?: (name: ExposureLayerName) => void;
 }
 
 function LegendBar({ legend }: { legend: Legend | null }) {
@@ -22,7 +29,8 @@ function LegendBar({ legend }: { legend: Legend | null }) {
   );
 }
 
-export default function LayerPanel({ layers, visible, opacity, onToggle, onOpacity }: Props) {
+export default function LayerPanel({ layers, visible, opacity, onToggle, onOpacity,
+  exposureLayers = [], exposureVisible, onExposureToggle }: Props) {
   const { lang, t } = useI18n();
   // Collapsed by default on phones so the map stays visible.
   const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 820);
@@ -52,8 +60,27 @@ export default function LayerPanel({ layers, visible, opacity, onToggle, onOpaci
       <button className="layer-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span>{t('layers.title')}</span><span aria-hidden>{open ? '▾' : '▸'}</span>
       </button>
+      {open && exposureLayers.length > 0 && (
+        <div className="layer-group" data-testid="exposure-layers">
+          <div className="layer-group-title">{t('exposure.layers.title')}</div>
+          {exposureLayers.map((e) => (
+            <div key={e.name} className="layer-row"
+                 title={e.shown < e.total ? t('exposure.layer.truncated', { shown: e.shown, total: e.total }) : undefined}>
+              <label className="layer-check">
+                <input type="checkbox" checked={exposureVisible?.[e.name] ?? true}
+                       onChange={() => onExposureToggle?.(e.name)} />
+                <span className="layer-name">{t(`exposure.layer.${e.name}` as 'exposure.layer.roads')}</span>
+                <span className="legend-swatch" style={{ background: LAYER_COLORS[e.name] }} aria-hidden />
+              </label>
+              {e.shown < e.total && (
+                <small className="muted">{t('exposure.layer.truncated', { shown: e.shown, total: e.total })}</small>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {open && (layers.length === 0
-        ? <p className="muted small">{t('layers.empty')}</p>
+        ? (exposureLayers.length === 0 ? <p className="muted small">{t('layers.empty')}</p> : null)
         : (
           <>
             <div className="layer-group">

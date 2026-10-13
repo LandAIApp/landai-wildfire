@@ -7,6 +7,8 @@ export interface IssueContext {
   municipality?: string;
   aoiHectares?: number | null;
   positiveSamples?: number | null;
+  /** Fallback limit when the issue carries no `max` (municipality issues). */
+  maxHectares?: number | null;
 }
 
 /** Translate an API warning/blocking issue by its `code`; fall back to the server message. */
@@ -16,7 +18,13 @@ export function describeIssue(lang: Language, issue: Issue, ctx: IssueContext = 
     municipality: ctx.municipality ?? '',
     hectares: ctx.aoiHectares != null ? formatNumber(ctx.aoiHectares, lang) : '',
     n: ctx.positiveSamples ?? '',
+    max: ctx.maxHectares != null ? formatNumber(ctx.maxHectares, lang) : '',
   };
+  // Parameters sent by the API (drawn-area issues) win over the context.
+  for (const [key, value] of Object.entries(issue.params ?? {})) {
+    params[key] = typeof value === 'number' && ['hectares', 'max', 'min'].includes(key)
+      ? formatNumber(value, lang) : value;
+  }
   return translateOptional(lang, `issues.${issue.code}`, params) ?? issue.message;
 }
 
@@ -41,6 +49,12 @@ export function describeError(lang: Language, error: unknown, apiBase: string): 
       .filter((d) => d && typeof d.code === 'string')
       .map((d) => describeIssue(lang, d));
     if (extra.length) text = `${extra.join(' ')}`;
+  }
+  if (code === 'rate_limit_exceeded' && e.details && typeof e.details === 'object') {
+    const seconds = Number((e.details as { retry_after_seconds?: unknown }).retry_after_seconds);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      text = `${text} ${translate(lang, 'errors.retryAfter', { minutes: Math.max(1, Math.ceil(seconds / 60)) })}`;
+    }
   }
   return text;
 }

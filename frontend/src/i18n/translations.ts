@@ -3,7 +3,10 @@
  * `es` is the source of truth for keys; `en` is typed against it so the
  * compiler fails if a key is missing in either language.
  */
+import { enV2, esV2 } from './translations.v2';
+
 export const es = {
+  ...esV2,
   // Header / brand
   'header.logoAlt': 'Land AI – Geospatial Solutions',
   'header.product': 'Wildfire Intelligence',
@@ -128,7 +131,7 @@ export const es = {
   'issues.date_too_early': 'La fecha del incendio es anterior al rango admitido por la cobertura de imágenes.',
   'issues.invalid_dates': 'La fecha final debe ser igual o posterior a la fecha del incendio.',
   'issues.municipality_not_found': 'No se encontró el municipio «{municipality}» en el departamento «{department}».',
-  'issues.aoi_too_large': 'El municipio abarca {hectares} ha, por encima del límite configurado.',
+  'issues.aoi_too_large': 'El área seleccionada abarca {hectares} ha, por encima del límite permitido ({max} ha).',
   'issues.aoi_large': 'Área grande ({hectares} ha): el procesamiento puede ser lento o alcanzar límites.',
   'issues.no_pre_images': 'No hay imágenes Sentinel-2 para el periodo PRE.',
   'issues.no_post_images': 'No hay imágenes Sentinel-2 para el periodo POST. Amplía la fecha final.',
@@ -166,6 +169,7 @@ export const es = {
 export type MessageKey = keyof typeof es;
 
 export const en: Record<MessageKey, string> = {
+  ...enV2,
   // Header / brand
   'header.logoAlt': 'Land AI – Geospatial Solutions',
   'header.product': 'Wildfire Intelligence',
@@ -289,7 +293,7 @@ export const en: Record<MessageKey, string> = {
   'issues.date_too_early': 'The fire date is earlier than the range supported by imagery coverage.',
   'issues.invalid_dates': 'The end date must be on or after the fire date.',
   'issues.municipality_not_found': 'Municipality “{municipality}” was not found in department “{department}”.',
-  'issues.aoi_too_large': 'The municipality covers {hectares} ha, above the configured limit.',
+  'issues.aoi_too_large': 'The selected area covers {hectares} ha, above the allowed limit ({max} ha).',
   'issues.aoi_large': 'Large area ({hectares} ha): processing may be slow or hit limits.',
   'issues.no_pre_images': 'No Sentinel-2 images exist for the PRE period.',
   'issues.no_post_images': 'No Sentinel-2 images exist for the POST period. Extend the end date.',
