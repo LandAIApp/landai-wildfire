@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1170" width="1800" height="1170" font-family="Poppins, 'Segoe UI', Arial, sans-serif">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22d8b4"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8fb0aa"/></marker>
+<marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f5c451"/></marker>
+<style>.bg{fill:#071110}.zone{fill:#0b1a18;stroke:#1f4b44;stroke-width:1.5}.zone-new{fill:#0b1a18;stroke:#22d8b4;stroke-width:1.5;stroke-dasharray:6 5}
+.box{fill:#0f2320;stroke:#2c6a5f;stroke-width:1.3}.new{fill:#10302b;stroke:#22d8b4;stroke-width:1.6}.ext{fill:#121b25;stroke:#4c6a85;stroke-width:1.3}
+.t{fill:#eaf6f3;font-size:15px;font-weight:600}.s{fill:#8fb0aa;font-size:12.5px}.z{fill:#8fb0aa;font-size:13px;font-weight:600;letter-spacing:.06em}
+.l{stroke:#22d8b4;stroke-width:2;fill:none}.lg{stroke:#8fb0aa;stroke-width:1.6;fill:none;stroke-dasharray:5 4}.ly{stroke:#f5c451;stroke-width:2;fill:none}
+.c{fill:#8fb0aa;font-size:11px}</style></defs>
+<rect class="bg" width="1800" height="1170"/>
+<text x="40" y="48" class="t" style="font-size:24px">Land AI Wildfire Intelligence v2 · Architecture</text>
+<text x="40" y="72" class="s">GitHub Pages (static) + Cloud Run (FastAPI) + Google Earth Engine · custom study area and Exposure &amp; Impact module · target ≈ USD 5 / month</text>
+<rect x="1460" y="30" width="16" height="16" class="new"/><text x="1484" y="43" class="s">new in v2</text>
+<rect x="1460" y="52" width="16" height="16" class="box"/><text x="1484" y="65" class="s">unchanged from v1</text>
+<rect x="1610" y="30" width="16" height="16" class="ext"/><text x="1634" y="43" class="s">external service</text>
+<rect x="40" y="110" width="450" height="640" rx="14" class="zone"/><text x="60" y="138" class="z">USER BROWSER · React 18 + Vite + TS + Leaflet</text>
+<rect x="60" y="150" width="410" height="92" rx="10" class="box"/><text x="74" y="174" class="t">Study area selection</text>
+<text x="74" y="196" class="s">Mode A: department + municipality (unchanged)</text>
+<text x="74" y="213" class="s" style="fill:#22d8b4">Mode B: draw polygon / rectangle · edit · delete · ha + km²</text>
+<text x="74" y="230" class="s">limits read from GET /api/v1/config (not hard-coded)</text>
+<rect x="60" y="254" width="410" height="70" rx="10" class="box"/><text x="74" y="278" class="t">Wildfire results · V7.6 layers</text>
+<text x="74" y="300" class="s">EE raster tiles, area table (ha), preliminary disclaimer</text>
+<rect x="60" y="336" width="410" height="150" rx="10" class="new"/><text x="74" y="360" class="t">Impact &amp; Exposure dashboard</text>
+<text x="74" y="382" class="s">“Analyze Exposure” = explicit user action only</text>
+<text x="74" y="399" class="s">cards: affected area · % of AOI · population · buildings</text>
+<text x="74" y="416" class="s">roads km · health · education · sensitivity · context</text>
+<text x="74" y="433" class="s">per-source states (OK / error); unavailable ≠ 0</text>
+<text x="74" y="450" class="s">ES / EN · methodological notice · layer toggles + popups</text>
+<text x="74" y="467" class="s">exports: GeoJSON · CSV · JSON report (client-side)</text>
+<rect x="60" y="498" width="410" height="70" rx="10" class="box"/><text x="74" y="522" class="t">Leaflet map</text>
+<text x="74" y="544" class="s">OSM basemap · EE tiles · canvas vector layers (capped)</text>
+<rect x="60" y="580" width="410" height="70" rx="10" class="new"/><text x="74" y="604" class="t">Recorded demo (optional)</text>
+<text x="74" y="626" class="s">static JSON of a REAL run, labelled “recorded”</text>
+<rect x="60" y="662" width="410" height="72" rx="10" class="box"/><text x="74" y="686" class="t">Local state only</text>
+<text x="74" y="708" class="s">no accounts, no database; language in localStorage</text>
+<text x="74" y="725" class="s">fonts bundled · no third-party trackers</text>
+<rect x="40" y="780" width="450" height="320" rx="14" class="zone"/><text x="60" y="808" class="z">GITHUB · LandAIApp/landai-wildfire</text>
+<rect x="60" y="820" width="410" height="64" rx="10" class="box"/><text x="74" y="844" class="t" style="font-size:14px">Repository (feature branch → PR → main)</text>
+<text x="74" y="866" class="s">no .env, no keys · .gitignore guards credentials/</text>
+<rect x="60" y="896" width="195" height="190" rx="10" class="box"/><text x="74" y="920" class="t" style="font-size:14px">Actions · CI</text>
+<text x="74" y="942" class="s">pytest (backend)</text>
+<text x="74" y="959" class="s">npm test · typecheck</text>
+<text x="74" y="976" class="s">npm run build</text>
+<text x="74" y="993" class="s" style="fill:#22d8b4">+ mocked Overpass /</text>
+<text x="74" y="1010" class="s" style="fill:#22d8b4">   WorldPop tests</text>
+<text x="74" y="1027" class="s" style="fill:#22d8b4">+ synthetic GeoTIFF tests</text>
+<rect x="275" y="896" width="195" height="190" rx="10" class="box"/><text x="289" y="920" class="t" style="font-size:14px">Deploy workflow</text>
+<text x="289" y="942" class="s">deploy-frontend.yml</text>
+<text x="289" y="959" class="s">builds with</text>
+<text x="289" y="976" class="s">VITE_API_BASE_URL</text>
+<text x="289" y="993" class="s">→ GitHub Pages</text>
+<text x="289" y="1010" class="s">backend: manual</text>
+<text x="289" y="1027" class="s">gcloud run deploy</text>
+<rect x="580" y="110" width="330" height="200" rx="14" class="zone"/><text x="600" y="138" class="z">GITHUB PAGES</text>
+<rect x="600" y="150" width="290" height="146" rx="10" class="box"/><text x="614" y="174" class="t" style="font-size:14px">landaiapp.github.io/landai-wildfire/</text>
+<text x="614" y="196" class="s">static HTML · JS · CSS · fonts</text>
+<text x="614" y="213" class="s">SPA fallback (404.html)</text>
+<text x="614" y="230" class="s" style="fill:#22d8b4">demo/exposure-demo.json (optional)</text>
+<text x="614" y="247" class="s">HTTPS · free tier</text>
+<rect x="580" y="350" width="730" height="760" rx="14" class="zone-new"/><text x="600" y="378" class="z">GOOGLE CLOUD RUN · landai-wildfire-api (FastAPI, Python 3.11, scale-to-zero)</text>
+<rect x="600" y="386" width="690" height="112" rx="10" class="new"/><text x="614" y="410" class="t">API surface  (CORS allow-list, no wildcard)</text>
+<text x="614" y="432" class="s">GET /health · /api/v1/administrative/* · POST /api/v1/wildfire/preflight · /analyze (+ geometry)</text>
+<text x="614" y="449" class="s" style="fill:#22d8b4">GET /api/v1/config · POST /api/v1/exposure/analyze</text>
+<text x="614" y="466" class="s" style="fill:#22d8b4">  → status success | partial · metrics · sources · warnings · layers</text>
+<text x="614" y="483" class="s">errors: {status, code, message, details} · 429 with Retry-After</text>
+<rect x="600" y="510" width="335" height="146" rx="10" class="new"/><text x="614" y="534" class="t" style="font-size:14px">Guards (env-configurable)</text>
+<text x="614" y="556" class="s">AOI validator: ring, self-intersection,</text>
+<text x="614" y="573" class="s">  vertices, ha limit (100,000 / exposure 50,000)</text>
+<text x="614" y="590" class="s">SlowAPI rate limits · concurrency gates</text>
+<text x="614" y="607" class="s">TTL caches (OSM, WorldPop) · timeouts</text>
+<text x="614" y="624" class="s">signed analysis_ref (HMAC, expiring)</text>
+<rect x="955" y="510" width="335" height="146" rx="10" class="box"/><text x="969" y="534" class="t" style="font-size:14px">Wildfire engine V7.6</text>
+<text x="969" y="556" class="s">Sentinel-2 · VIIRS · Dynamic World · WorldCover</text>
+<text x="969" y="573" class="s">pseudo-supervised Random Forest · 6-px cleaning</text>
+<text x="969" y="590" class="s" style="fill:#f5c451">algorithm UNCHANGED; only the AOI geometry</text>
+<text x="969" y="607" class="s" style="fill:#f5c451">source differs (municipality | drawn polygon)</text>
+<rect x="600" y="668" width="690" height="256" rx="10" class="new"/><text x="614" y="692" class="t">Exposure &amp; Impact service</text>
+<rect x="614" y="704" width="325" height="110" rx="10" class="box"/><text x="628" y="728" class="t" style="font-size:14px">Footprint extraction</text>
+<text x="628" y="750" class="s">re-run V7.6 graph from signed ref</text>
+<text x="628" y="767" class="s">burn masks → getDownloadURL (20 m, UTM)</text>
+<text x="628" y="784" class="s">rasterio vectorise · no reduceToVectors</text>
+<text x="628" y="801" class="s">pixel limit · no silent simplification</text>
+<rect x="951" y="704" width="325" height="110" rx="10" class="box"/><text x="965" y="728" class="t" style="font-size:14px">Overpass client (OSM)</text>
+<text x="965" y="750" class="s">POST bbox · out count pre-check · cached</text>
+<text x="965" y="767" class="s">User-Agent · 429/5xx → no retries</text>
+<text x="965" y="784" class="s">local exact intersection (shapely)</text>
+<text x="965" y="801" class="s">incomplete OSM ⇒ “unavailable”, never 0</text>
+<rect x="614" y="822" width="325" height="92" rx="10" class="box"/><text x="628" y="846" class="t" style="font-size:14px">WorldPop client</text>
+<text x="628" y="868" class="s">POST task → bounded polling → value</text>
+<text x="628" y="885" class="s">real footprint polygon · year from config</text>
+<text x="628" y="902" class="s">optional API key only in backend env</text>
+<rect x="951" y="822" width="325" height="92" rx="10" class="box"/><text x="965" y="846" class="t" style="font-size:14px">Metrics + exports</text>
+<text x="965" y="868" class="s">metric lengths/areas (UTM) · road union</text>
+<text x="965" y="885" class="s">buffer vs intersection · sensitivity table</text>
+<text x="965" y="902" class="s">CSV · metadata report · layers GeoJSON</text>
+<rect x="600" y="938" width="335" height="150" rx="10" class="box"/><text x="614" y="962" class="t" style="font-size:14px">Container build &amp; config</text>
+<text x="614" y="984" class="s">Cloud Build / Artifact Registry</text>
+<text x="614" y="1001" class="s">env: EE_PROJECT · CORS_ORIGINS · limits</text>
+<text x="614" y="1018" class="s">Secret Manager → EE key file (mounted)</text>
+<text x="614" y="1035" class="s">budget alert + --max-instances cap</text>
+<rect x="955" y="938" width="335" height="150" rx="10" class="box"/><text x="969" y="962" class="t" style="font-size:14px">Stateless by design</text>
+<text x="969" y="984" class="s">no database · no accounts · no paid APIs</text>
+<text x="969" y="1001" class="s">caches/limits in memory per instance</text>
+<text x="969" y="1018" class="s">scale-to-zero ⇒ caches and counters reset</text>
+<text x="969" y="1035" class="s">(documented limitation)</text>
+<rect x="1360" y="110" width="400" height="330" rx="14" class="zone"/><text x="1380" y="138" class="z">GOOGLE EARTH ENGINE</text>
+<rect x="1380" y="150" width="360" height="276" rx="10" class="ext"/><text x="1394" y="174" class="t" style="font-size:14px">Server-side compute (EE project quota)</text>
+<text x="1394" y="196" class="s">COPERNICUS/S2_SR_HARMONIZED + cloud score</text>
+<text x="1394" y="213" class="s">VIIRS active fire (SNPP / NOAA-20)</text>
+<text x="1394" y="230" class="s">GOOGLE/DYNAMICWORLD/V1 · ESA WorldCover</text>
+<text x="1394" y="247" class="s">private asset: municipalities collection</text>
+<text x="1394" y="264" class="s">getInfo → counts / areas (API boundary only)</text>
+<text x="1394" y="281" class="s">getMapId → temporary tile URLs for the browser</text>
+<text x="1394" y="298" class="s" style="fill:#22d8b4">getDownloadURL → GeoTIFF of burn masks (new)</text>
+<text x="1394" y="315" class="s">auth: service account (Cloud Run) /</text>
+<text x="1394" y="332" class="s">  earthengine authenticate (local)</text>
+<text x="1394" y="349" class="s">EE terms: non-commercial vs commercial,</text>
+<text x="1394" y="366" class="s">  see deployment.md §5</text>
+<rect x="1360" y="470" width="400" height="150" rx="14" class="zone"/><text x="1380" y="498" class="z">OPENSTREETMAP (ODbL)</text>
+<rect x="1380" y="508" width="360" height="98" rx="10" class="ext"/><text x="1394" y="532" class="t" style="font-size:14px">Overpass API (public instance)</text>
+<text x="1394" y="554" class="s">buildings · highways · hospitals/clinics · schools</text>
+<text x="1394" y="571" class="s">configurable OVERPASS_ENDPOINT · shared: be gentle</text>
+<text x="1394" y="588" class="s">basemap raster tiles are fetched by the browser</text>
+<rect x="1360" y="650" width="400" height="150" rx="14" class="zone"/><text x="1380" y="678" class="z">WORLDPOP (CC BY 4.0)</text>
+<rect x="1380" y="688" width="360" height="98" rx="10" class="ext"/><text x="1394" y="712" class="t" style="font-size:14px">api.worldpop.org · async tasks</text>
+<text x="1394" y="734" class="s">POST /v2/population → GET /v2/tasks/{id}</text>
+<text x="1394" y="751" class="s">100 m / 1 km · dataset year (default 2020)</text>
+<text x="1394" y="768" class="s" style="fill:#f5c451">v2 contract to be verified with the smoke test</text>
+<rect x="1360" y="830" width="400" height="270" rx="14" class="zone"/><text x="1380" y="858" class="z">OPERATOR / DEVELOPER</text>
+<rect x="1380" y="868" width="360" height="214" rx="10" class="box"/><text x="1394" y="892" class="t" style="font-size:14px">Local &amp; conference workflow</text>
+<text x="1394" y="914" class="s">uvicorn app.main:app  +  npm run dev</text>
+<text x="1394" y="931" class="s">smoke_test_exposure.py</text>
+<text x="1394" y="948" class="s">  → real Overpass + WorldPop, raw responses</text>
+<text x="1394" y="965" class="s">record_demo.py</text>
+<text x="1394" y="982" class="s">  → real result cached for the demo (labelled)</text>
+<text x="1394" y="999" class="s">gcloud run deploy … (manual, never automatic)</text>
+<text x="1394" y="1016" class="s">budget alert · revoke any exposed key</text>
+<path d="M580 200 L490 200" class="l" marker-end="url(#a)"/><text x="500" y="192" class="c">static app</text>
+<path d="M490 440 L580 440" class="l" marker-start="url(#a)" marker-end="url(#a)"/><text x="494" y="432" class="c" style="font-size:10px">HTTPS JSON</text>
+<path d="M470 990 L530 990 L530 262 L580 262" class="l" marker-end="url(#a)"/><text x="522" y="640" class="c" transform="rotate(-90 522 640)">deploy-pages</text>
+<path d="M1310 380 L1335 380 L1335 300 L1360 300" class="l" marker-end="url(#a)"/><text x="1313" y="372" class="c">API</text>
+<path d="M1310 560 L1360 560" class="l" marker-end="url(#a)"/><text x="1316" y="552" class="c">POST</text>
+<path d="M1310 740 L1360 740" class="l" marker-end="url(#a)"/><text x="1313" y="732" class="c">async</text>
+<path d="M1360 960 L1310 960" class="ly" marker-end="url(#y)"/><text x="1316" y="952" class="c">deploy</text>
+<path d="M270 110 L270 94 L1550 94 L1550 110" class="lg" marker-end="url(#g)"/><text x="600" y="90" class="c">map tiles (EE temporary URLs) and OSM basemap are loaded directly by the browser</text>
+<text x="40" y="1128" class="s">Flow: 1 select / draw area → 2 preflight → 3 analyze (V7.6, unchanged) → 4 result + signed analysis_ref → 5 user presses “Analyze Exposure”</text>
+<text x="40" y="1148" class="s">→ 6 real affected footprint rebuilt (raster-first) → 7 OSM + WorldPop queried in parallel (partial results allowed) → 8 dashboard + exports (GeoJSON / CSV / JSON report)</text>
+<text x="40" y="1136" class="s" style="display:none"></text></svg>

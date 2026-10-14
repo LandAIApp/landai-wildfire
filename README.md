@@ -187,3 +187,11 @@ GitHub Pages alone cannot host the backend (it needs Python + Earth Engine).
 
 Automated preliminary Earth Observation estimate. This result is not an officially validated
 wildfire perimeter.
+
+
+## v2: Custom AOI + Exposure & Impact
+Draw a study area (Mode B) or pick a municipality (Mode A), run the V7.6 analysis, then press **Analyze Exposure**
+for OSM/WorldPop exposure of the real affected footprint. See [docs/UPGRADE_v2.md](docs/UPGRADE_v2.md),
+[docs/api.md](docs/api.md), [docs/exposure-methodology.md](docs/exposure-methodology.md),
+[docs/architecture.md](docs/architecture.md), [docs/conference-checklist.md](docs/conference-checklist.md).
+Exposure estimates are preliminary and do not confirm damage, casualties or displacement.

@@ -43,3 +43,16 @@ def mock_preflight_ee(monkeypatch):
     def set_responses(*responses):
         state['responses'] = list(responses)
     return set_responses
+
+
+@pytest.fixture(autouse=True)
+def _fresh_process_state():
+    """Caches, gates and progress live in process memory: every test starts from a clean slate."""
+    from app.core import progress
+    from app.core.gate import reset_gates
+    from app.services import analysis, exposure
+    exposure.reset_caches()
+    analysis.reset_flights()
+    progress.clear()
+    reset_gates()
+    yield

@@ -61,16 +61,17 @@ gcloud run deploy landai-wildfire-api `
   --port 8000 `
   --service-account "landai-backend@$PROJECT.iam.gserviceaccount.com" `
   --allow-unauthenticated `
-  --timeout 900 --memory 1Gi --cpu 1 `
+  --timeout 1200 --memory 2Gi --cpu 1 `
   --max-instances 3 `
   --set-secrets "/secrets/ee-key.json=landai-ee-key:latest" `
-  --set-env-vars "EE_PROJECT=$PROJECT,EE_PRIVATE_KEY_PATH=/secrets/ee-key.json,CORS_ORIGINS=https://landaiapp.github.io"
+  --set-env-vars "EE_PROJECT=$PROJECT,EE_PRIVATE_KEY_PATH=/secrets/ee-key.json,CORS_ORIGINS=https://landaiapp.github.io,TRUST_FORWARDED_FOR=true,ANALYSIS_REF_SECRET=<long random>,WORLDPOP_YEAR=2020"
 ```
 The command prints the service URL (`https://landai-wildfire-api-xxxx.a.run.app`). Check
 `<URL>/health?check_ee=true` and `<URL>/api/v1/administrative/departments`.
 
 Notes
-- `--timeout 900` matters: an analysis is one long request (several minutes).
+- `--timeout 1200` matters: an analysis is one long request (several minutes); `--memory 2Gi` is needed in v2 for the
+  raster download and vectorisation of the Exposure module (`EXPOSURE_MAX_PIXELS` bounds it).
 - `--max-instances 3` caps cost and concurrent Earth Engine load.
 - Add every frontend origin to `CORS_ORIGINS`, comma-separated (e.g. a custom domain too).
   Update later with `gcloud run services update landai-wildfire-api --update-env-vars CORS_ORIGINS=...`.
@@ -102,3 +103,32 @@ GitHub Pages on a **private** repository requires a paid GitHub plan; public rep
 3. **Scientific status.** Runtime equivalence with the original GEE script is still unvalidated
    (see `docs/equivalence.md`). The UI states results are preliminary and not official perimeters; keep it that way.
 4. **Secrets.** Never commit `.env` or key files. The key lives only in Secret Manager.
+
+## 6. v2 additions (Custom AOI + Exposure & Impact)
+- **New env vars** (all optional, defaults in `.env.example`): `MAX_CUSTOM_AOI_HECTARES`, `MAX_EXPOSURE_AOI_HECTARES`,
+  `RATE_LIMIT_ANALYZE/EXPOSURE`, `ANALYSIS_REF_SECRET`, `OVERPASS_*`, `WORLDPOP_*`, `TRUST_FORWARDED_FOR`.
+  Put `ANALYSIS_REF_SECRET` (and `WORLDPOP_API_KEY` if you have one) in Secret Manager (`--set-secrets`), never in the repo or the frontend.
+- **`ANALYSIS_REF_SECRET`**: if empty the secret is random per process, so a reference issued before a restart/scale-to-zero is rejected
+  (`invalid_analysis_ref`) and the user must re-run the analysis. Set it to avoid that.
+- **Rate limits and caches are in memory per instance**: with `--max-instances 3` the effective limit is up to 3x, and counters/caches
+  reset when an instance scales to zero. Keep `--max-instances` low; add a Cloud Armor / API key only if abuse appears (no paid service is required).
+- **Overpass** is a shared public instance: keep the descriptive `OVERPASS_USER_AGENT` (add a contact), do not loop calls.
+  For heavy use switch `OVERPASS_ENDPOINT` to your own instance.
+- **Demo mode**: record a REAL result with `python backend/scripts/record_demo.py` and place the output at
+  `frontend/public/demo/exposure-demo.json`; the UI labels it "recorded". Nothing ships by default.
+- Cost target (~USD 5/month): scale-to-zero, `--max-instances 3`, no database, no paid APIs; set a budget alert.
+- Frontend deploy is unchanged (GitHub Pages workflow). **Do not deploy from the feature branch before the checklist in `docs/conference-checklist.md`.**
+
+## 7. Cost estimate (Cloud Run, request-based billing)
+
+Prices checked on 2026-10-13 (Tier 1 regions): USD 0.000024 per vCPU-second, 0.00000025 per GiB-second, 0.40 per million requests; free tier per month: 180,000 vCPU-s, 360,000 GiB-s, 2 M requests, 1 GiB egress. Configuration assumed: 1 vCPU, 2 GiB, `--max-instances 3`.
+
+| Study area | Expected duration of one full run (analysis + exposure) | Compute cost per run |
+|---|---|---|
+| ~20,000 ha (measured: 7.7 min before the speed-ups in this version) | 6–8 min | ≈ USD 0.01–0.015 |
+| 50,000–80,000 ha (extrapolated, **not measured**) | 12–20 min | ≈ USD 0.02–0.04 |
+
+* ~1,000 full runs/month at 50–80 k ha ≈ USD 20–40 of compute, minus the free tier (roughly 150–250 runs).
+* Per-IP limits (`RATE_LIMIT_ANALYZE`, `RATE_LIMIT_EXPOSURE`) and `--max-instances 3` bound the worst case; set a Google Cloud budget alert (e.g. USD 5 and USD 20).
+* Compute is not the main risk. Earth Engine quota (Community tier: 150 EECU-hours/month, reduced performance beyond it), public Overpass fair use and the Cloud Run request timeout (`--timeout 1200`) are. Areas above ~40,000 ha should be treated as unvalidated until measured.
+* Overview diagram: `docs/img/architecture-overview.svg` / `.png`.

@@ -12,26 +12,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from .api import administrative, health, wildfire
+from .api import administrative, config as config_api, exposure, health, progress, wildfire
 from .core.config import get_settings
 from .core.errors import WildfireError
-from .core.rate_limit import limiter
+from .core.rate_limit import limiter, retry_after_seconds
 
+logging.basicConfig(level=get_settings().log_level.upper(),
+                    format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('landai')
+# httpx logs every request URL at INFO (Earth Engine / WorldPop task links): keep them out of the logs.
+for _noisy in ('httpx', 'httpcore'):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='Land AI Wildfire Intelligence', version='0.1.0',
+    app = FastAPI(title='Land AI Wildfire Intelligence', version='2.0.0',
                   description='Automated preliminary wildfire estimate (V7.6 port).')
     app.state.limiter = limiter
     @app.exception_handler(RateLimitExceeded)
-    async def rate_limit_handler(_: Request, exc: RateLimitExceeded) -> JSONResponse:
+    async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        retry = retry_after_seconds(request)
         return JSONResponse(
             status_code=429,
+            headers={'Retry-After': str(retry)} if retry else None,
             content={
                 'status': 'error',
                 'code': 'rate_limit_exceeded',
-                'message': 'Too many wildfire analyses. Please wait before trying again.',
-                'details': str(exc.detail),
+                'message': 'Too many requests. Please wait before trying again.',
+                'details': {'limit': str(exc.detail), 'retry_after_seconds': retry},
             },
         )
     app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origin_list,
@@ -61,6 +68,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(administrative.router)
     app.include_router(wildfire.router)
+    app.include_router(exposure.router)
+    app.include_router(progress.router)
+    app.include_router(config_api.router)
     return app
 
 
