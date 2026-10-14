@@ -236,7 +236,12 @@ def _warning(code: str, **params) -> dict:
 
 def _source_error(exc: Exception, source: str) -> dict:
     if isinstance(exc, WildfireError):
-        return {'code': exc.code, 'message': exc.message, 'details': getattr(exc, 'details', None)}
+        details = getattr(exc, 'details', None)
+        status = details.get('http_status') if isinstance(details, dict) else None
+        # the reason a source failed must be visible in the logs (our own message, never keys or response bodies)
+        logger.warning('exposure_source_failed source=%s code=%s http_status=%s message=%s', source, exc.code, status,
+                       str(exc.message)[:300])
+        return {'code': exc.code, 'message': exc.message, 'details': details}
     logger.exception('exposure_source_failed source=%s', source)
     return {'code': 'internal_error', 'message': 'Unexpected error while contacting this source.', 'details': None}
 
