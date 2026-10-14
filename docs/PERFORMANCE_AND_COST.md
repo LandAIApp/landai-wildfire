@@ -158,3 +158,19 @@ therefore stays one request; the browser polls only the lightweight progress end
   Engine not called); compare with the table in section 1. Count of Earth Engine evaluations per exposure run: one
   `getDownloadURL` per tile (+1 extent read for a municipality) on the first run, 0 on a footprint cache hit; Overpass requests:
   one per cell (0 when the cells are cached); WorldPop: one task + polling (0 when cached).
+
+
+## Memory finding on Cloud Run (2026-10-14) and fix
+
+* **Evidence (Cloud Run log, revision 00008, 17,157 ha custom area):** `Memory limit of 2048 MiB exceeded with 2074 MiB used`,
+  25 s after `exposure_sources_done`; the instance was killed, the request ended in HTTP 503 and the progress registry
+  (in memory) was lost (`/progress/...` 404 on the new instance).
+* **Cause (measured offline, `scripts/bench_exposure.py` with a more fragmented footprint):** the proximity zone was built
+  with a single `hazard.buffer(500)` over the raw 20 m raster outline. With thousands of parts GEOS needed ~2 GiB and ~15 s
+  for 4,000 ha, and the process was killed for 17,000 ha in an 8 GiB sandbox.
+* **Fix:** `spatial.buffer_parts()` buffers each part and dissolves the result. It is the same geometry (the buffer of a
+  union is the union of the buffers; symmetric difference 1.5e-9 m2 on a 53 km2 zone; unit test
+  `test_buffer_parts_matches_one_shot_buffer`). 4,000 ha: 15 s / +2 GiB -> 0.3 s / +0 MiB. 17,157 ha fragmented: peak RSS
+  210 MiB. Used for the proximity zone, the display buffer and the Overpass region.
+* The memory limit stays at 2 GiB: with the root cause removed there is no evidence that more is needed. If a larger
+  area ever reaches the limit again, raising to 4 GiB costs about USD 0.0025 more per 8-minute run.

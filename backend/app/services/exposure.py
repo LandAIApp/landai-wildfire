@@ -299,7 +299,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     bounds = spatial.to_wgs84(box(minx - d, miny - d, maxx + d, maxy + d), fp.crs).bounds
     # cells that cannot touch the (buffered) footprint are not requested from Overpass; the outline is
     # simplified first (40 m << the 500 m margin) because buffering the raw raster outline takes a minute
-    osm_region = spatial.to_wgs84(largest.simplify(40).buffer(d, quad_segs=1), fp.crs)
+    osm_region = spatial.to_wgs84(spatial.buffer_parts(largest.simplify(40), d, quad_segs=1), fp.crs)
     timings['prepare_s'] = round(time.perf_counter() - prep_started, 1)
     logger.info('exposure_prepared seconds=%.1f', timings['prepare_s'])
 
@@ -376,7 +376,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     if 'data' in osm_result:
         data: osm.OsmData = osm_result['data']
         stage = time.perf_counter()
-        zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard   # built once, reused below
+        zone = spatial.buffer_parts(hazard, buffer_m, quad_segs=4) if buffer_m > 0 else hazard   # built once, reused below
         timings['zone_s'] = round(time.perf_counter() - stage, 1)
         logger.info('exposure_zone seconds=%.1f', timings['zone_s'])
         stage = time.perf_counter()
@@ -467,7 +467,7 @@ def build_response(req: ExposureRequest, ctx: dict, fp: Footprint, settings: Set
     layers['aoi'] = {'type': 'FeatureCollection', 'features': [spatial.feature(aoi_display, {
         'role': 'study_area', 'area_ha': round(float(ctx['aoi_hectares']), 2)})], 'metadata': {}}
     if buffer_m > 0:
-        base = zone if zone is not None else hazard.buffer(buffer_m, quad_segs=4)
+        base = zone if zone is not None else spatial.buffer_parts(hazard, buffer_m, quad_segs=4)
         buf_geom = base.simplify(max(fp.pixel_size_m, 20), preserve_topology=True)
     else:
         buf_geom = hazard

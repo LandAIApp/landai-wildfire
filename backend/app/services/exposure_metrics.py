@@ -92,7 +92,7 @@ def compute(osm: OsmData, hazard: BaseGeometry, crs: str, *, buffer_m: float,
     out = ExposureMetrics()
     shapely.prepare(hazard)
     if zone is None:   # callers that already built the proximity zone pass it in (buffering a raw outline is slow)
-        zone = hazard.buffer(buffer_m, quad_segs=4) if buffer_m > 0 else hazard
+        zone = spatial.buffer_parts(hazard, buffer_m, quad_segs=4) if buffer_m > 0 else hazard
     shapely.prepare(zone)
 
     # ---- buildings -----------------------------------------------------------------------

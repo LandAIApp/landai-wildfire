@@ -312,3 +312,37 @@ def test_httpx_request_urls_are_not_logged_at_info():
     import logging
     create_app()
     assert logging.getLogger('httpx').level >= logging.WARNING
+
+
+# ---- part-wise buffer (memory fix: a one-shot buffer of a fragmented raster outline exhausted 2 GiB) ----------------
+
+def _fragmented(n: int = 300):
+    import numpy as np
+    import shapely
+    from shapely.geometry import box
+    rng = np.random.default_rng(3)
+    cells = []
+    for _ in range(n):
+        x, y = rng.uniform(0, 4000), rng.uniform(0, 4000)
+        w, h = rng.integers(1, 6) * 20, rng.integers(1, 6) * 20
+        cells.append(box(x, y, x + w, y + h))
+    return shapely.union_all(cells)
+
+
+def test_buffer_parts_matches_one_shot_buffer():
+    from app.services import spatial
+    geom = _fragmented()
+    assert len(getattr(geom, 'geoms', [geom])) > 5
+    expected = geom.buffer(500, quad_segs=4)
+    got = spatial.buffer_parts(geom, 500, quad_segs=4)
+    assert expected.symmetric_difference(got).area < 1e-3          # m2: same shape
+    assert abs(expected.area - got.area) < 1e-3
+
+
+def test_buffer_parts_edge_cases():
+    from shapely.geometry import Polygon, box
+    from app.services import spatial
+    assert spatial.buffer_parts(Polygon(), 500).is_empty
+    single = box(0, 0, 100, 100)
+    assert spatial.buffer_parts(single, 50).equals(single.buffer(50, quad_segs=4))
+    assert spatial.buffer_parts(single, 0) is single               # no buffer requested: returned untouched

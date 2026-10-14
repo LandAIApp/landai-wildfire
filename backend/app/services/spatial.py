@@ -71,3 +71,19 @@ def feature(geom: BaseGeometry, properties: dict | None = None, decimals: int = 
 
 def is_finite_number(value) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(value)
+
+
+def buffer_parts(geom: BaseGeometry, distance: float, quad_segs: int = 4) -> BaseGeometry:
+    """Buffer ``geom`` by ``distance`` metres, part by part, then dissolve.
+
+    Mathematically identical to ``geom.buffer(distance, quad_segs=...)`` (the buffer of a union is the union of the
+    buffers) but GEOS does not have to node the whole fragmented outline at once. On a raw 20 m raster outline with
+    thousands of parts the one-shot buffer took ~15 s and ~2 GiB of RAM (it exhausted a 2 GiB Cloud Run instance);
+    this version takes ~0.3 s and a few MiB and returns the same shape (symmetric difference ~1e-9 m2).
+    """
+    if geom is None or geom.is_empty or distance <= 0:
+        return geom
+    parts = list(geom.geoms) if hasattr(geom, 'geoms') else [geom]
+    if len(parts) == 1:
+        return parts[0].buffer(distance, quad_segs=quad_segs)
+    return shapely.union_all(shapely.buffer(np.asarray(parts, dtype=object), distance, quad_segs=quad_segs))
