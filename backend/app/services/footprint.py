@@ -240,7 +240,7 @@ def _fetch_tiles(plan: TilePlan, fetch, all_names: list[str], crs: str, settings
 
     def run(item):
         index, tile = item
-        if time.monotonic() > deadline:
+        if time.monotonic() >= deadline:
             raise FootprintError('The exposure computation exceeded its time budget. Use a smaller area.',
                                  details={'tile': f'{index + 1}/{len(plan.tiles)}',
                                           'max_seconds': settings.exposure_max_seconds})
