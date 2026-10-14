@@ -45,17 +45,18 @@
 <text x="622" y="358" class="s">Random Forest burn classifier</text>
 <text x="622" y="381" class="s">Sentinel-2 + VIIRS active fires</text>
 <text x="622" y="404" class="s">Burn probability thresholds</text>
-<rect class="box" x="602" y="436" width="396" height="162" rx="14"/>
+<rect class="box" x="602" y="436" width="396" height="182" rx="14"/>
 <text x="622" y="469" class="t">Exposure engine</text>
-<text x="622" y="498" class="s">Affected footprint (20 m raster to polygons)</text>
-<text x="622" y="521" class="s">Buildings · roads · health · education</text>
-<text x="622" y="544" class="s">Population estimate</text>
-<text x="622" y="567" class="s">500 m proximity zone</text>
-<text x="622" y="590" class="s">Threshold sensitivity · export files</text>
-<rect class="box" x="602" y="614" width="396" height="100" rx="14"/>
-<text x="622" y="647" class="t">Runtime and secrets</text>
-<text x="622" y="676" class="s">Stateless · in-memory cache · no database</text>
-<text x="622" y="699" class="s">Credentials only in environment variables</text>
+<text x="622" y="498" class="s">Affected footprint (20 m raster/vector)</text>
+<text x="622" y="519" class="s">Buildings · roads · health · education</text>
+<text x="622" y="540" class="s">Zonal population estimation</text>
+<text x="622" y="561" class="s">Configurable proximity analysis</text>
+<text x="622" y="582" class="s">Default 500 m buffer · nearby ≠ affected</text>
+<text x="622" y="603" class="s">Threshold sensitivity · export files</text>
+<rect class="box" x="602" y="632" width="396" height="100" rx="14"/>
+<text x="622" y="665" class="t">Runtime and secrets</text>
+<text x="622" y="694" class="s">Stateless · ephemeral in-memory cache</text>
+<text x="622" y="717" class="s">Credentials only in environment variables</text>
 <text x="602" y="750" class="s">Python · serverless, scales to zero</text>
 <rect class="zone" x="1120" y="110" width="440" height="656" rx="18"/>
 <text x="1142" y="144" class="z">EXTERNAL SERVICES (OPEN DATA)</text>
@@ -65,14 +66,13 @@
 <text x="1162" y="241" class="s">Administrative boundaries</text>
 <text x="1162" y="264" class="s">Burn classification and burn raster</text>
 <text x="1162" y="287" class="s">Service-account authentication</text>
-<text x="1162" y="310" class="s">Hosted by Google Cloud</text>
 <rect class="ext" x="1142" y="392" width="396" height="100" rx="14"/>
 <text x="1162" y="425" class="t">OpenStreetMap · Overpass API</text>
 <text x="1162" y="454" class="s">Buildings · roads · health · education</text>
 <text x="1162" y="477" class="s">Community-hosted servers with mirrors</text>
 <rect class="ext" x="1142" y="508" width="396" height="100" rx="14"/>
 <text x="1162" y="541" class="t">WorldPop API</text>
-<text x="1162" y="570" class="s">Gridded population, 100 m resolution</text>
+<text x="1162" y="570" class="s">Gridded population estimates</text>
 <text x="1162" y="593" class="s">Hosted by WorldPop (Univ. of Southampton)</text>
 <rect class="ext" x="1142" y="624" width="396" height="76" rx="14"/>
 <text x="1162" y="657" class="t">OpenStreetMap tile servers</text>
@@ -81,6 +81,6 @@
 <path class="l" d="M998 316 H1142" marker-end="url(#a)"/><text x="1014" y="304" class="c">EE Python API</text>
 <path class="l" d="M998 450 H1040 V352 H1142" marker-end="url(#a)"/>
 <path class="l" d="M998 480 H1142" marker-end="url(#a)"/><text x="1020" y="468" class="c">Overpass QL</text><text x="1050" y="504" class="c">HTTPS</text>
-<path class="l" d="M998 580 H1142" marker-end="url(#a)"/><text x="1022" y="568" class="c">REST · async</text>
+<path class="l" d="M998 580 H1142" marker-end="url(#a)"/><text x="1026" y="552" class="c">Asynchronous</text><text x="1018" y="568" class="c">population task</text>
 <path class="l" d="M260 766 V816 H1340 V700" marker-end="url(#a)"/><text x="640" y="806" class="c">Basemap tiles · HTTPS (browser to tile servers)</text>
 <text x="40" y="862" class="s">Open data sources · Stateless backend · No database · Pay-per-use hosting</text></svg>
